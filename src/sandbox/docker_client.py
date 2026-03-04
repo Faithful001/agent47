@@ -5,7 +5,7 @@ import io
 import time
 
 class Sandbox:
-    def __init__(self, image="python:3.10-slim"):
+    def __init__(self, image="ubuntu:22.04"):
         self.client = docker.from_env()
         self.image = image
         self.container = None
@@ -17,11 +17,15 @@ class Sandbox:
             self.image,
             detach=True,
             tty=True,
-            command="tail -f /dev/null" # Keep container alive
+            command="tail -f /dev/null"  # Keep container alive
         )
-        
-        # Install basics in the container
-        self.execute_command("pip install pytest")
+
+        # Install common language runtimes and tools so the
+        # Operative can work with any project type.
+        self.execute_command(
+            "apt-get update && apt-get install -y --no-install-recommends "
+            "python3 python3-pip nodejs npm git curl build-essential"
+        )
         return self.container.id
 
     def stop(self):
@@ -44,19 +48,40 @@ class Sandbox:
         """Copies a local file into the container."""
         if not self.container:
             raise RuntimeError("Sandbox is not running.")
-            
-        with open(src_path, 'rb') as f:
+        
+        # read the file at the src_path
+        with open(src_path, "rb") as f:
             file_data = f.read()
-            
+
+        # prepare the archive
         tar_stream = io.BytesIO()
-        with tarfile.open(fileobj=tar_stream, mode='w') as tar:
+        with tarfile.open(fileobj=tar_stream, mode="w") as tar:
             tarinfo = tarfile.TarInfo(name=os.path.basename(dest_path))
             tarinfo.size = len(file_data)
             tarinfo.mtime = time.time()
             tar.addfile(tarinfo, io.BytesIO(file_data))
-            
-        tar_stream.seek(0)
+        
+        tar_stream.seek(0) # take the pointer back to the top
+
         self.container.put_archive(os.path.dirname(dest_path), tar_stream)
+
+    def copy_repo_to_container(self, local_dir: str, container_dir: str):
+        """Copy an entire local directory into the container.
+
+        Creates a tar archive of `local_dir` and extracts it into
+        `container_dir` inside the container.
+        """
+        if not self.container:
+            raise RuntimeError("Sandbox is not running.")
+
+        tar_stream = io.BytesIO()
+        with tarfile.open(fileobj=tar_stream, mode="w") as tar:
+            tar.add(local_dir, arcname=".")
+
+        tar_stream.seek(0)
+        self.execute_command(f"mkdir -p {container_dir}")
+        self.container.put_archive(container_dir, tar_stream)
+        
         
     def read_file_from_container(self, filepath: str) -> str:
         """Reads a file from the container."""

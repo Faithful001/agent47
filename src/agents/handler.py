@@ -12,7 +12,7 @@ from langchain.tools import tool
 from langchain.agents.structured_output import ToolStrategy
 from langgraph.checkpoint.memory import InMemorySaver
 
-from src.config import basic_model
+from src.config.config import basic_model
 
 
 # --- Structured Output ---
@@ -33,7 +33,6 @@ def list_repo_files(repo_path: str) -> str:
     import os
     files = []
     for root, dirs, filenames in os.walk(repo_path):
-        # Skip hidden dirs and common junk
         dirs[:] = [d for d in dirs if not d.startswith('.')]
         for f in filenames:
             rel_path = os.path.relpath(os.path.join(root, f), repo_path)
