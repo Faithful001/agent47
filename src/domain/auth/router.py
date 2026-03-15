@@ -8,9 +8,7 @@ from sqlalchemy.orm import Session
 
 from src.config.database import get_db
 from src.domain.auth.service import (
-    get_oauth_login_url,
-    exchange_code_for_token,
-    get_user_info,
+    AuthService
 )
 from src.domain.user.service import UserService
 
@@ -21,7 +19,7 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 class AuthCallbackResponse(BaseModel):
     """Response after successful OAuth callback."""
     user_id: str
-    github_username: str
+    username: str
     is_new_user: bool
 
 
@@ -31,7 +29,7 @@ def login():
 
     Flowchart step: 'Register with GitHub'.
     """
-    return {"url": get_oauth_login_url()}
+    return {"url": AuthService.get_oauth_login_url()}
 
 
 @router.get("/callback", response_model=AuthCallbackResponse)
@@ -42,14 +40,14 @@ async def oauth_callback(code: str, db: Session = Depends(get_db)):
     'Account exists?' → 'Create user account' → 'Log the user in'.
     """
     try:
-        token = await exchange_code_for_token(code)
+        token = await AuthService.exchange_code_for_token(code)
     except Exception as exc:
         raise HTTPException(
             status_code=400,
             detail=f"Failed to exchange OAuth code: {exc}",
         ) from exc
 
-    info = get_user_info(token)
+    info = AuthService.get_user_info(token)
     user_svc = UserService(db)
     existing = user_svc.get_user_by_github_id(info["id"])
 
@@ -58,7 +56,7 @@ async def oauth_callback(code: str, db: Session = Depends(get_db)):
         is_new = False
     else:
         user = user_svc.create_user(
-            github_username=info["login"],
+            username=info["login"],
             github_access_token=token,
             github_id=info["id"],
             avatar_url=info["avatar_url"],
@@ -68,6 +66,6 @@ async def oauth_callback(code: str, db: Session = Depends(get_db)):
 
     return AuthCallbackResponse(
         user_id=user.id,
-        github_username=user.github_username,
+        username=user.username,
         is_new_user=is_new,
     )

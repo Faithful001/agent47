@@ -1,10 +1,8 @@
-"""User model — SQLAlchemy table for authenticated GitHub users."""
-
 import uuid
 from datetime import datetime, timezone
 
 from sqlalchemy import String, Integer, DateTime
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.config.database import Base
 
@@ -17,7 +15,9 @@ class User(Base):
     id: Mapped[str] = mapped_column(
         String, primary_key=True, default=lambda: uuid.uuid4().hex
     )
-    github_username: Mapped[str] = mapped_column(String, nullable=False)
+    username: Mapped[str] = mapped_column(String, nullable=False)
+    first_name: Mapped[str] = mapped_column(String, nullable=True)
+    last_name: Mapped[str] = mapped_column(String, nullable=True)
     github_access_token: Mapped[str] = mapped_column(String, nullable=False)
     github_id: Mapped[int] = mapped_column(Integer, unique=True, nullable=False)
     avatar_url: Mapped[str] = mapped_column(String, default="")
@@ -27,8 +27,12 @@ class User(Base):
         default=lambda: datetime.now(timezone.utc),
     )
 
+    tracked_repositories: Mapped[list["TrackedRepository"]] = relationship(
+        "TrackedRepository", back_populates="user", cascade="all, delete-orphan"
+    )
+
     def __repr__(self):
         return (
-            f"User(id={self.id!r}, username={self.github_username!r}, "
+            f"User(id={self.id!r}, username={self.username!r}, "
             f"email={self.email!r})"
         )
