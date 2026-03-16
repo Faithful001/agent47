@@ -5,7 +5,7 @@ in isolated Docker sandbox environments.
 Entry point for the application.
 """
 
-from src.config import basic_model, advanced_model
+from src.config.config import basic_model, advanced_model
 
 
 if __name__ == "__main__":

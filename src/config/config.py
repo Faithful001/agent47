@@ -15,12 +15,22 @@ GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 GITHUB_CLIENT_ID = os.getenv("GITHUB_CLIENT_ID", "")
 GITHUB_CLIENT_SECRET = os.getenv("GITHUB_CLIENT_SECRET", "")
 GITHUB_WEBHOOK_SECRET = os.getenv("GITHUB_WEBHOOK_SECRET", "")
+WEBHOOK_CALLBACK_URL = os.getenv(
+    "WEBHOOK_CALLBACK_URL", "http://localhost:8000/webhooks/github"
+)
 GITHUB_REDIRECT_URI = os.getenv(
     "GITHUB_REDIRECT_URI", "http://localhost:8000/auth/callback"
 )
 
 # --- Workspace ---
 WORKSPACE_BASE_DIR = os.getenv("WORKSPACE_BASE_DIR", "/tmp/agent47_workspaces")
+
+# --- JWT / Auth ---
+JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "change-me-in-production")
+JWT_EXPIRY_DAYS = int(os.getenv("JWT_EXPIRY_DAYS", "7"))
+
+# --- Frontend ---
+FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
 
 basic_model = init_chat_model(
     model="gemini-3-flash-preview",

@@ -11,6 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from src.config.database import create_tables
 from src.domain.auth.router import router as auth_router
+from src.domain.auth.session import Session as _Session  # noqa: F401 — registers the model with Base
 from src.domain.repositories.router import router as repos_router
 from src.domain.webhooks.router import router as webhooks_router
 from src.domain.contracts.router import router as contracts_router
@@ -36,7 +37,7 @@ app = FastAPI(
 # CORS — allow the React frontend to call the API
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Tighten this in production
+    allow_origins=["http://localhost:3000", "https://595e-102-90-97-165.ngrok-free.app"],  # Tighten this in production
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

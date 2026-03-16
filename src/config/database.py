@@ -1,11 +1,17 @@
 import os
 
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
+
 from sqlalchemy import create_engine
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
 DATABASE_URL = os.getenv(
     "DATABASE_URL",
-    "postgresql://postgres:postgres@localhost:5432/agent47",
+    "postgresql://postgres:postgres@127.0.0.1:5432/agent47",
 )
 
 engine = create_engine(DATABASE_URL, echo=False)

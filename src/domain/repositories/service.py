@@ -46,25 +46,65 @@ class RepositoryService:
         return orgs
 
     @staticmethod
-    def create_webhook(
+    def get_or_create_webhook(
         token: str,
         repo_full_name: str,
         callback_url: str,
         secret: str = "",
     ) -> int:
-        """Register a webhook on a GitHub repo for CI events."""
+        """Register a webhook on a GitHub repo, or return the existing one's ID."""
+        from github import GithubException
+
         gh = Github(token)
         repo = gh.get_repo(repo_full_name)
         config = {"url": callback_url, "content_type": "json"}
         if secret:
             config["secret"] = secret
-        hook = repo.create_hook(
+
+        try:
+            hook = repo.create_hook(
+                name="web",
+                config=config,
+                events=["check_run", "pull_request", "status"],
+                active=True,
+            )
+            return hook.id
+        except GithubException as exc:
+            if exc.status != 422:
+                raise
+            # Webhook already exists — find it and update its URL
+            for hook in repo.get_hooks():
+                hook.edit(
+                    name="web",
+                    config=config,
+                    events=["check_run", "pull_request", "status"],
+                    active=True,
+                )
+                return hook.id
+            raise  # No hooks found despite the 422 — re-raise
+
+    @staticmethod
+    def update_webhook(
+        token: str,
+        repo_full_name: str,
+        webhook_id: int,
+        callback_url: str,
+        secret: str = "",
+    ) -> None:
+        """Update a webhook's callback URL and config."""
+        gh = Github(token)
+        repo = gh.get_repo(repo_full_name)
+        hook = repo.get_hook(webhook_id)
+        config = {"url": callback_url, "content_type": "json"}
+        if secret:
+            config["secret"] = secret
+        hook.edit(
             name="web",
             config=config,
             events=["check_run", "pull_request", "status"],
             active=True,
         )
-        return hook.id
+
 
     @staticmethod
     def remove_webhook(

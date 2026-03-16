@@ -1,17 +1,28 @@
 """
-Auth service — GitHub OAuth flow.
+Auth service — GitHub OAuth flow + JWT session management.
 """
 
+from datetime import datetime, timedelta, timezone
+
 import httpx
+import jwt
 from github import Github
+from sqlalchemy import select
+from sqlalchemy.orm import Session as DBSession
 
 from src.config.config import (
     GITHUB_CLIENT_ID,
     GITHUB_CLIENT_SECRET,
     GITHUB_REDIRECT_URI,
+    JWT_SECRET_KEY,
+    JWT_EXPIRY_DAYS,
 )
+from src.domain.auth.session import Session
+
 
 class AuthService:
+
+    # ── GitHub OAuth ─────────────────────────────────────────────
 
     @staticmethod
     def get_oauth_login_url() -> str:
@@ -47,7 +58,6 @@ class AuthService:
             )
         return token
 
-
     @staticmethod
     def get_user_info(token: str) -> dict:
         """Fetch the authenticated user's GitHub profile."""
@@ -59,3 +69,40 @@ class AuthService:
             "avatar_url": user.avatar_url,
             "email": user.email or "",
         }
+
+    # ── JWT Session Management ───────────────────────────────────
+
+    @staticmethod
+    def create_session(db: DBSession, user_id: str) -> str:
+        """Create a database session row and return a signed JWT."""
+        now = datetime.now(timezone.utc)
+        expires = now + timedelta(days=JWT_EXPIRY_DAYS)
+
+        session = Session(user_id=user_id, expires_at=expires)
+        db.add(session)
+        db.commit()
+        db.refresh(session)
+
+        payload = {
+            "session_id": session.id,
+            "user_id": user_id,
+            "exp": expires,
+            "iat": now,
+        }
+        return jwt.encode(payload, JWT_SECRET_KEY, algorithm="HS256")
+
+    @staticmethod
+    def verify_token(token: str) -> dict:
+        """Decode and verify a JWT. Returns the payload dict.
+        Raises jwt.InvalidTokenError on failure."""
+        return jwt.decode(token, JWT_SECRET_KEY, algorithms=["HS256"])
+
+    @staticmethod
+    def revoke_session(db: DBSession, session_id: str) -> None:
+        """Delete a session row, immediately invalidating its JWT."""
+        stmt = select(Session).where(Session.id == session_id)
+        session = db.execute(stmt).scalar_one_or_none()
+        if session:
+            db.delete(session)
+            db.commit()
+

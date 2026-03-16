@@ -6,6 +6,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from src.config.database import get_db
+from src.domain.auth.router import get_current_user
+from src.domain.user.model import User
 from src.domain.contracts.service import ContractService
 
 
@@ -13,9 +15,12 @@ router = APIRouter(prefix="/contracts", tags=["contracts"])
 
 
 @router.get("/")
-def list_contracts(user_id: str, db: Session = Depends(get_db)):
-    """List all contracts for a user."""
-    contracts = ContractService(db).list_contracts(user_id)
+def list_contracts(
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """List all contracts for the authenticated user."""
+    contracts = ContractService(db).list_contracts(user.id)
     return {
         "contracts": [
             {
@@ -32,11 +37,20 @@ def list_contracts(user_id: str, db: Session = Depends(get_db)):
 
 
 @router.get("/{contract_id}")
-def get_contract(contract_id: str, db: Session = Depends(get_db)):
+def get_contract(
+    contract_id: str,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     """Get details for a specific contract."""
     contract = ContractService(db).get_contract(contract_id)
     if not contract:
         raise HTTPException(status_code=404, detail="Contract not found")
+
+    # Ensure the contract belongs to the authenticated user
+    if contract.user_id != user.id:
+        raise HTTPException(status_code=403, detail="Not your contract")
+
     return {
         "id": contract.id,
         "repo_id": contract.repo_id,
