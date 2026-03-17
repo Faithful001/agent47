@@ -37,3 +37,27 @@ class TrackedRepository(Base):
             f"TrackedRepository(id={self.id!r}, "
             f"full_name={self.full_name!r}, active={self.is_active})"
         )
+
+
+class TrackedPush(Base):
+    """Tracks a single push event to a tracked repository."""
+
+    __tablename__ = "tracked_pushes"
+
+    id: Mapped[str] = mapped_column(
+        String, primary_key=True, default=lambda: uuid.uuid4().hex
+    )
+    repo_full_name: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    branch: Mapped[str] = mapped_column(String, nullable=False)
+    commit_sha: Mapped[str] = mapped_column(String, nullable=False)
+    pusher: Mapped[str] = mapped_column(String, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+    )
+
+    def __repr__(self):
+        return (
+            f"TrackedPush(id={self.id!r}, repo={self.repo_full_name!r}, "
+            f"branch={self.branch!r}, commit_sha={self.commit_sha!r})"
+        )

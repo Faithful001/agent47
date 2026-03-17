@@ -13,6 +13,7 @@ from src.domain.webhooks.parser import verify_signature, parse_webhook_event
 from src.domain.contracts.service import ContractService
 from src.domain.user.service import UserService
 from src.domain.repositories.service import RepositoryService
+from src.utils.track_push import TrackPush
 
 
 logger = logging.getLogger(__name__)
@@ -39,6 +40,13 @@ async def receive_github_webhook(
 
     event_type = request.headers.get("X-GitHub-Event", "")
     payload = await request.json()
+
+    if event_type == "push":
+        repo_data = payload.get("repository", {})
+        repo_full_name = repo_data.get("full_name", "")
+        if repo_full_name:
+            TrackPush(db).track_push(repo_full_name, payload)
+        return {"status": "tracked", "reason": "Push event recorded"}
 
     failure = parse_webhook_event(event_type, payload)
     if failure is None:

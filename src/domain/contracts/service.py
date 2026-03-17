@@ -82,7 +82,8 @@ class ContractService:
             4. Update the contract in the database
         """
         contract.status = "in_progress"
-        fix_branch = f"{contract.source_branch}-agent47"
+        repo_name = contract.repo_id.split("/")[-1] if "/" in contract.repo_id else contract.repo_id
+        fix_branch = f"{repo_name}-agent47"
         contract.fix_branch = fix_branch
         self.db.commit()
 
@@ -136,13 +137,14 @@ class ContractService:
                     token=user.github_access_token,
                     repo_full_name=contract.repo_id,
                     head=fix_branch,
-                    base=contract.source_branch,
-                    title=f"🎯 Agent47 Fix: {contract.error_message[:80]}",
+                    base="main",
+                    title=f"Automated Code Fix: Agent47 Resolution",
                     body=(
                         "## Automated Fix by Agent47\n\n"
-                        f"**Error:** {contract.error_message}\n\n"
-                        f"**Attempts:** {contract.attempts}\n\n"
-                        "This PR was generated automatically by Agent47."
+                        "This pull request contains an automated fix for a recent build failure or merge conflict.\n\n"
+                        f"**Error Addressed:**\n```\n{contract.error_message}\n```\n\n"
+                        f"**Resolution Attempts:** {contract.attempts}\n\n"
+                        "Please review the changes carefully before merging."
                     ),
                 )
                 contract.pr_url = pr_url
