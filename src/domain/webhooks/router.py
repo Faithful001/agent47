@@ -14,6 +14,7 @@ from src.domain.contracts.service import ContractService
 from src.domain.user.service import UserService
 from src.domain.repositories.service import RepositoryService
 from src.utils.track_push import TrackPush
+from src.infra.queue.tasks.run_pipeline import run_pipeline_task
 
 
 logger = logging.getLogger(__name__)
@@ -86,37 +87,11 @@ async def receive_github_webhook(
     repo_url = f"https://github.com/{tracked_repo.full_name}.git"
     contract_id = contract.id
 
-    asyncio.create_task(
-        _run_pipeline_background(contract_id, user_id, repo_url)
-    )
+    # Enqueue the job durably in Redis via Celery
+    run_pipeline_task.delay(contract_id, user_id, repo_url)
 
     return {
         "status": "triggered",
         "contract_id": contract.id,
         "error_message": failure.error_message,
     }
-
-
-async def _run_pipeline_background(contract_id, user_id, repo_url):
-    """Run the Agent47 pipeline in a background task with its own session."""
-    db = SessionLocal()
-    try:
-        contract = ContractService(db).get_contract(contract_id)
-        user = UserService(db).get_user(user_id)
-
-        if not contract or not user:
-            logger.error("Contract or user not found for background task")
-            return
-
-        contract_svc = ContractService(db)
-        await contract_svc.run_contract(contract, user, repo_url)
-        logger.info(
-            "Contract %s completed: status=%s, pr=%s",
-            contract.id, contract.status, contract.pr_url,
-        )
-    except Exception:
-        logger.exception(
-            "Background pipeline failed for contract %s", contract_id
-        )
-    finally:
-        db.close()

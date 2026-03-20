@@ -67,7 +67,7 @@ class ContractService:
 
     # --- Pipeline ---
 
-    async def run_contract(
+    def run_contract(
         self,
         contract: Contract,
         user: User,
