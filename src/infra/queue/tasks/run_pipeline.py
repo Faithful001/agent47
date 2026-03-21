@@ -1,7 +1,7 @@
 import logging
 
 from src.config.database import SessionLocal
-from src.domain.contracts.service import ContractService
+from src.domain.contract.service import ContractService
 from src.domain.user.service import UserService
 from src.infra.queue import celery
 
@@ -9,10 +9,6 @@ logger = logging.getLogger(__name__)
 
 @celery.task(name="run_pipeline_task")
 def run_pipeline_task(contract_id: str, user_id: str, repo_url: str):
-    """
-    Synchronous Celery task executing the Agent47 pipeline.
-    This gets executed by the Celery worker process.
-    """
     logger.info("Received Celery task to run pipeline for contract %s", contract_id)
     
     db = SessionLocal()

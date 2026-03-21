@@ -6,7 +6,7 @@ from github import Github
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from src.domain.repositories.models import TrackedRepository
+from src.domain.repository.model import Repository
 
 
 class RepositoryService:
@@ -65,7 +65,7 @@ class RepositoryService:
             hook = repo.create_hook(
                 name="web",
                 config=config,
-                events=["check_run", "pull_request", "status"],
+                events=["check_suite", "check_run", "workflow_run", "pull_request"],
                 active=True,
             )
             return hook.id
@@ -127,9 +127,9 @@ class RepositoryService:
         name: str,
         full_name: str,
         webhook_id: int,
-    ) -> TrackedRepository:
+    ) -> Repository:
         """Save a newly tracked repository to the database."""
-        tracked = TrackedRepository(
+        tracked = Repository(
             user_id=user_id,
             owner=owner,
             name=name,
@@ -141,35 +141,35 @@ class RepositoryService:
         self.db.refresh(tracked)
         return tracked
 
-    def get_tracked_repos(self, user_id: str) -> list[TrackedRepository]:
+    def get_tracked_repos(self, user_id: str) -> list[Repository]:
         """List all active tracked repos for a user."""
         stmt = (
-            select(TrackedRepository)
+            select(Repository)
             .where(
-                TrackedRepository.user_id == user_id,
-                TrackedRepository.is_active.is_(True),
+                Repository.user_id == user_id,
+                Repository.is_active.is_(True),
             )
         )
         return list(self.db.execute(stmt).scalars().all())
 
-    def get_tracked_repo(self, repo_id: str) -> TrackedRepository | None:
+    def get_tracked_repo(self, repo_id: str) -> Repository | None:
         """Get a tracked repo by its ID."""
-        return self.db.get(TrackedRepository, repo_id)
+        return self.db.get(Repository, repo_id)
 
     def get_tracked_repo_by_full_name(
         self, full_name: str
-    ) -> TrackedRepository | None:
+    ) -> Repository | None:
         """Look up a tracked repo by its GitHub full name (owner/repo)."""
         stmt = (
-            select(TrackedRepository)
+            select(Repository)
             .where(
-                TrackedRepository.full_name == full_name,
-                TrackedRepository.is_active.is_(True),
+                Repository.full_name == full_name,
+                Repository.is_active.is_(True),
             )
         )
         return self.db.execute(stmt).scalar_one_or_none()
 
-    def untrack_repo(self, tracked: TrackedRepository) -> None:
+    def untrack_repo(self, tracked: Repository) -> None:
         """Mark a tracked repo as inactive."""
         tracked.is_active = False
         self.db.commit()

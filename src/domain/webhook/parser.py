@@ -34,26 +34,49 @@ def verify_signature(payload_body: bytes, signature: str) -> bool:
     return hmac.compare_digest(f"sha256={expected}", signature)
 
 
-def parse_webhook_event(
-    event_type: str,
-    payload: dict,
-) -> WebhookFailure | None:
-    """Parse a GitHub webhook payload and return a WebhookFailure
-    if it represents a CI failure, or None if it should be ignored.
-
-    Supported event types:
-    - check_run: GitHub Actions / CI check completed with failure
-    - status: Commit status updated to failure/error
-    - pull_request: PR opened/synced (to capture branch context)
-    """
+def parse_webhook_event(event_type: str, payload: dict) -> WebhookFailure | None:
+    if event_type == "check_suite":
+        return _parse_check_suite(payload)
     if event_type == "check_run":
         return _parse_check_run(payload)
-    if event_type == "status":
-        return _parse_status(payload)
+    if event_type == "workflow_run":
+        return _parse_workflow_run(payload)
     if event_type == "pull_request":
         return _parse_pull_request(payload)
-
     return None
+
+def _parse_check_suite(payload: dict) -> WebhookFailure | None:
+    suite = payload.get("check_suite", {})
+    action = payload.get("action")
+
+    if action != "completed":
+        return None
+
+    conclusion = suite.get("conclusion")
+    if conclusion not in ("failure", "timed_out", "cancelled"):
+        return None
+
+    repo = payload.get("repository", {})
+    head_branch = suite.get("head_branch", "")
+    head_sha = suite.get("head_sha", "")
+
+    # Try to get PR context if available
+    prs = suite.get("pull_requests", [])
+    pr_number = prs[0].get("number") if prs else None
+
+    # Best effort error message
+    error_message = f"Check suite failed ({conclusion})"
+    if suite.get("latest_check_runs_count", 0) > 0:
+        failed_count = suite.get("failure_check_runs_count", 0)
+        error_message += f" — {failed_count} check(s) failed"
+
+    return WebhookFailure(
+        repo_full_name=repo.get("full_name", ""),
+        branch=head_branch,
+        error_message=error_message,
+        commit_sha=head_sha,
+        pr_number=pr_number,
+    )
 
 
 def _parse_check_run(payload: dict) -> WebhookFailure | None:
@@ -88,6 +111,29 @@ def _parse_check_run(payload: dict) -> WebhookFailure | None:
         error_message=error_message,
         commit_sha=head_sha,
         pr_number=pr_number,
+    )
+
+def _parse_workflow_run(payload: dict) -> WebhookFailure | None:
+    run = payload.get("workflow_run", {})
+    action = payload.get("action")
+
+    if action != "completed":
+        return None
+
+    conclusion = run.get("conclusion")
+    if conclusion not in ("failure", "timed_out", "cancelled"):
+        return None
+
+    repo = payload.get("repository", {})
+    head_branch = run.get("head_branch", "")
+    head_sha = run.get("head_sha", "")
+
+    return WebhookFailure(
+        repo_full_name=repo.get("full_name", ""),
+        branch=head_branch,
+        error_message=f"Workflow '{run.get('name')}' {conclusion}",
+        commit_sha=head_sha,
+        pr_number=run.get("pull_requests", [{}])[0].get("number"),
     )
 
 

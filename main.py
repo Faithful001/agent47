@@ -1,21 +1,17 @@
-"""
-Agent47 FastAPI Application.
-
-Run with: uvicorn main:app --reload
-"""
-
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from src.config.database import create_tables
-from src.domain.auth.router import router as auth_router
-from src.domain.auth.session import Session as _Session
-from src.domain.repositories.router import router as repos_router
-from src.domain.webhooks.router import router as webhooks_router
-from src.domain.contracts.router import router as contracts_router
 from src.config.config import basic_model, advanced_model
+from src.config.database import create_tables
+
+from src.domain.auth.router import router as auth_router
+from src.domain.repository.router import router as repo_router
+from src.domain.webhooks.router import router as webhooks_router
+from src.domain.contract.router import router as contract_router
+from src.domain.build.router import router as build_router
+from src.domain.websocket.router import router as websocket_router
 
 
 @asynccontextmanager
@@ -46,9 +42,11 @@ app.add_middleware(
 
 # --- Register domain routers ---
 app.include_router(auth_router)
-app.include_router(repos_router)
+app.include_router(repo_router)
 app.include_router(webhooks_router)
-app.include_router(contracts_router)
+app.include_router(contract_router)
+app.include_router(build_router)
+app.include_router(websocket_router)
 
 
 @app.get("/")
@@ -57,7 +55,7 @@ def root():
     return {
         "name": "Agent47",
         "status": "online",
-        "message": "The bug assassin is ready for contracts.",
+        "message": "The bug assassin is ready for contract.",
     }
 
 

@@ -27,8 +27,8 @@ class User(Base):
         default=lambda: datetime.now(timezone.utc),
     )
 
-    tracked_repositories: Mapped[list["TrackedRepository"]] = relationship(
-        "TrackedRepository", back_populates="user", cascade="all, delete-orphan"
+    repositories: Mapped[list["Repository"]] = relationship(
+        "Repository", back_populates="user", cascade="all, delete-orphan"
     )
 
     def __repr__(self):

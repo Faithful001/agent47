@@ -9,10 +9,12 @@ from github import Github
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from src.domain.contracts.models import Contract
+from src.domain.contract.model import Contract
 from src.domain.user.model import User
 from src.git.service import clone_repo, create_fix_branch, commit_and_push
 from src.agents.graph import workflow
+from src.config.redis import get_redis
+from src.infra.pubsub.manager import PubSubManager
 
 logger = logging.getLogger(__name__)
 
@@ -82,9 +84,12 @@ class ContractService:
             4. Update the contract in the database
         """
         contract.status = "in_progress"
+        
         repo_name = contract.repo_id.split("/")[-1] if "/" in contract.repo_id else contract.repo_id
         fix_branch = f"{repo_name}-agent47"
         contract.fix_branch = fix_branch
+
+        await self._publish_contract_update(contract)
         self.db.commit()
 
         try:
@@ -150,12 +155,14 @@ class ContractService:
                 contract.pr_url = pr_url
                 contract.status = "fixed"
                 contract.fix_summary = result.get("test_output", "")
+                await self._publish_contract_update(contract)
             else:
                 contract.status = "failed"
                 contract.fix_summary = (
                     f"Failed after {contract.attempts} attempts. "
                     f"Last output: {result.get('test_output', 'N/A')}"
                 )
+                await self._publish_contract_update(contract)
 
         except Exception as exc:
             logger.exception("Pipeline failed: %s", exc)
@@ -163,6 +170,27 @@ class ContractService:
             contract.fix_summary = f"Pipeline error: {exc}"
 
         contract.completed_at = datetime.now(timezone.utc)
+        await self._publish_contract_update(contract)
         self.db.commit()
         self.db.refresh(contract)
         return contract
+
+    async def _publish_contract_update(self, contract: Contract):
+        redis = get_redis() 
+        pubsub = PubSubManager(redis)
+        
+        message = {
+            "type": "contract_update",
+            "contract_id": str(contract.id),
+            "repo_id": contract.repo_id,
+            "commit_sha": contract.commit_sha,
+            "status": contract.status,
+            "attempts": contract.attempts,
+            "pr_url": contract.pr_url,
+            "fix_summary": contract.fix_summary,
+            "error_message": contract.error_message,
+            "updated_at": contract.updated_at.isoformat() if contract.updated_at else None
+        }
+        
+        channel = f"contract:user:{contract.user_id}"
+        await pubsub.publish(channel, message)

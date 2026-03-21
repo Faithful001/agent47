@@ -1,4 +1,4 @@
-"""TrackedRepository model — SQLAlchemy table for tracked GitHub repos."""
+"""Repository model — SQLAlchemy table for tracked GitHub repos."""
 
 import uuid
 from datetime import datetime, timezone
@@ -9,10 +9,10 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from src.config.database import Base
 
 
-class TrackedRepository(Base):
+class Repository(Base):
     """A GitHub repo the user has chosen to track for CI failures."""
 
-    __tablename__ = "tracked_repositories"
+    __tablename__ = "repositories"
 
     id: Mapped[str] = mapped_column(
         String, primary_key=True, default=lambda: uuid.uuid4().hex
@@ -20,7 +20,10 @@ class TrackedRepository(Base):
     user_id: Mapped[str] = mapped_column(
         String, ForeignKey("users.id"), nullable=False
     )
-    user: Mapped["User"] = relationship("User", back_populates="tracked_repositories")
+    user: Mapped["User"] = relationship("User", back_populates="repositories")
+    builds: Mapped[list["Build"]] = relationship(
+        "Build", back_populates="repo", cascade="all, delete-orphan"
+    )
     owner: Mapped[str] = mapped_column(String, nullable=False)
     name: Mapped[str] = mapped_column(String, nullable=False)
     full_name: Mapped[str] = mapped_column(String, nullable=False)
@@ -34,30 +37,6 @@ class TrackedRepository(Base):
 
     def __repr__(self):
         return (
-            f"TrackedRepository(id={self.id!r}, "
+            f"Repository(id={self.id!r}, "
             f"full_name={self.full_name!r}, active={self.is_active})"
-        )
-
-
-class TrackedPush(Base):
-    """Tracks a single push event to a tracked repository."""
-
-    __tablename__ = "tracked_pushes"
-
-    id: Mapped[str] = mapped_column(
-        String, primary_key=True, default=lambda: uuid.uuid4().hex
-    )
-    repo_full_name: Mapped[str] = mapped_column(String, nullable=False, index=True)
-    branch: Mapped[str] = mapped_column(String, nullable=False)
-    commit_sha: Mapped[str] = mapped_column(String, nullable=False)
-    pusher: Mapped[str] = mapped_column(String, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        default=lambda: datetime.now(timezone.utc),
-    )
-
-    def __repr__(self):
-        return (
-            f"TrackedPush(id={self.id!r}, repo={self.repo_full_name!r}, "
-            f"branch={self.branch!r}, commit_sha={self.commit_sha!r})"
         )

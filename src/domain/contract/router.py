@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from src.config.database import get_db
 from src.domain.auth.router import get_current_user
 from src.domain.user.model import User
-from src.domain.contracts.service import ContractService
+from src.domain.contract.service import ContractService
 
 
 router = APIRouter(prefix="/contracts", tags=["contracts"])

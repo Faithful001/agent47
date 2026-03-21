@@ -39,14 +39,6 @@ async def get_current_user(
     request: Request,
     db: Session = Depends(get_db),
 ) -> User:
-    """FastAPI dependency that extracts + validates the session cookie.
-
-    Usage on any protected endpoint::
-
-        @router.get("/protected")
-        def protected(user: User = Depends(get_current_user)):
-            ...
-    """
     token = request.cookies.get("session_token")
     if not token:
         raise HTTPException(status_code=401, detail="Not authenticated")

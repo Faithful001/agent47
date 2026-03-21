@@ -10,7 +10,7 @@ from src.config.database import get_db
 from src.config.config import GITHUB_WEBHOOK_SECRET, WEBHOOK_CALLBACK_URL
 from src.domain.auth.router import get_current_user
 from src.domain.user.model import User
-from src.domain.repositories.service import RepositoryService
+from src.domain.repository.service import RepositoryService
 
 
 router = APIRouter(prefix="/repos", tags=["repos"])
