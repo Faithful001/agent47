@@ -14,7 +14,7 @@ from src.config.database import get_db
 from src.domain.contract.service import ContractService
 from src.domain.repository.service import RepositoryService
 from src.domain.user.service import UserService
-from src.domain.webhooks.parser import verify_signature, parse_webhook_event
+from src.domain.webhook.parser import verify_signature, parse_webhook_event
 from src.infra.queue.tasks.run_pipeline import run_pipeline_task
 from src.config.redis import get_redis
 from src.utils.track_push import TrackPush

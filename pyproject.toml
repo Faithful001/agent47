@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "Agent 47: A lethal multi-agent system for autonomous bug fixing and code refactoring in isolated environments."
 authors = ["Faithful King <your.email@example.com>"]
 readme = "README.md"
+package-mode = false
 
 [tool.poetry.dependencies]
 python = ">=3.11,<4.0"

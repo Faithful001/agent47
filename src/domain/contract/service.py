@@ -89,7 +89,7 @@ class ContractService:
         fix_branch = f"{repo_name}-agent47"
         contract.fix_branch = fix_branch
 
-        await self._publish_contract_update(contract)
+        self._publish_contract_update(contract)
         self.db.commit()
 
         try:
@@ -155,14 +155,14 @@ class ContractService:
                 contract.pr_url = pr_url
                 contract.status = "fixed"
                 contract.fix_summary = result.get("test_output", "")
-                await self._publish_contract_update(contract)
+                self._publish_contract_update(contract)
             else:
                 contract.status = "failed"
                 contract.fix_summary = (
                     f"Failed after {contract.attempts} attempts. "
                     f"Last output: {result.get('test_output', 'N/A')}"
                 )
-                await self._publish_contract_update(contract)
+                self._publish_contract_update(contract)
 
         except Exception as exc:
             logger.exception("Pipeline failed: %s", exc)
@@ -170,27 +170,40 @@ class ContractService:
             contract.fix_summary = f"Pipeline error: {exc}"
 
         contract.completed_at = datetime.now(timezone.utc)
-        await self._publish_contract_update(contract)
+        self._publish_contract_update(contract)
         self.db.commit()
         self.db.refresh(contract)
         return contract
 
-    async def _publish_contract_update(self, contract: Contract):
-        redis = get_redis() 
-        pubsub = PubSubManager(redis)
+    def _publish_contract_update(self, contract: Contract):
+        import asyncio
+        from redis.asyncio import Redis
+        from src.config.redis import get_redis_pool
+        from src.infra.pubsub.manager import PubSubManager
         
-        message = {
-            "type": "contract_update",
-            "contract_id": str(contract.id),
-            "repo_id": contract.repo_id,
-            "commit_sha": contract.commit_sha,
-            "status": contract.status,
-            "attempts": contract.attempts,
-            "pr_url": contract.pr_url,
-            "fix_summary": contract.fix_summary,
-            "error_message": contract.error_message,
-            "updated_at": contract.updated_at.isoformat() if contract.updated_at else None
-        }
-        
-        channel = f"contract:user:{contract.user_id}"
-        await pubsub.publish(channel, message)
+        async def publish_async():
+            pool = get_redis_pool()
+            redis = Redis(connection_pool=pool)
+            pubsub = PubSubManager(redis)
+            
+            message = {
+                "type": "contract_update",
+                "contract_id": str(contract.id),
+                "repo_id": contract.repo_id,
+                "commit_sha": contract.commit_sha,
+                "status": contract.status,
+                "attempts": contract.attempts,
+                "pr_url": contract.pr_url,
+                "fix_summary": contract.fix_summary,
+                "error_message": contract.error_message,
+                "updated_at": contract.updated_at.isoformat() if contract.updated_at else None
+            }
+            
+            channel = f"contract:user:{contract.user_id}"
+            await pubsub.publish(channel, message)
+            
+        try:
+            loop = asyncio.get_running_loop()
+            loop.create_task(publish_async())
+        except RuntimeError:
+            asyncio.run(publish_async())

@@ -6,9 +6,16 @@ import time
 
 class Sandbox:
     def __init__(self, image="ubuntu:22.04"):
-        self.client = docker.from_env()
+        self._client = None
         self.image = image
         self.container = None
+
+    @property
+    def client(self):
+        """Lazily connect to Docker only when actually needed."""
+        if self._client is None:
+            self._client = docker.from_env()
+        return self._client
 
     def start(self):
         """Starts a fresh docker container."""

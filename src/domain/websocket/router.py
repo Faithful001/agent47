@@ -1,7 +1,9 @@
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends
-from src.infra.websocket.ws_manager import WebSocketManager
+from redis.asyncio import Redis
+from src.infra.websocket.manager import WebSocketManager
 from src.domain.user.service import UserService
 from src.config.database import get_db
+from src.config.redis import get_redis
 from sqlalchemy.orm import Session
 from src.infra.pubsub.manager import PubSubManager
 

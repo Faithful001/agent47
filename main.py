@@ -8,7 +8,7 @@ from src.config.database import create_tables
 
 from src.domain.auth.router import router as auth_router
 from src.domain.repository.router import router as repo_router
-from src.domain.webhooks.router import router as webhooks_router
+from src.domain.webhook.router import router as webhook_router
 from src.domain.contract.router import router as contract_router
 from src.domain.build.router import router as build_router
 from src.domain.websocket.router import router as websocket_router
@@ -43,7 +43,7 @@ app.add_middleware(
 # --- Register domain routers ---
 app.include_router(auth_router)
 app.include_router(repo_router)
-app.include_router(webhooks_router)
+app.include_router(webhook_router)
 app.include_router(contract_router)
 app.include_router(build_router)
 app.include_router(websocket_router)
