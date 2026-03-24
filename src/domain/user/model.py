@@ -19,7 +19,7 @@ class User(Base):
     first_name: Mapped[str] = mapped_column(String, nullable=True)
     last_name: Mapped[str] = mapped_column(String, nullable=True)
     github_access_token: Mapped[str] = mapped_column(String, nullable=False)
-    github_id: Mapped[int] = mapped_column(Integer, unique=True, nullable=False)
+    github_id: Mapped[int] = mapped_column(Integer, unique=True, nullable=False, index=True)
     avatar_url: Mapped[str] = mapped_column(String, default="")
     email: Mapped[str] = mapped_column(String, unique=True, default="")
     created_at: Mapped[datetime] = mapped_column(
@@ -29,6 +29,10 @@ class User(Base):
 
     repositories: Mapped[list["Repository"]] = relationship(
         "Repository", back_populates="user", cascade="all, delete-orphan"
+    )
+
+    builds: Mapped[list["Build"]] = relationship(
+        "Build", back_populates="user", cascade="all, delete-orphan"
     )
 
     def __repr__(self):

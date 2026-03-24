@@ -18,11 +18,6 @@ class UserService:
         """Look up a user by their internal ID."""
         return self.db.get(User, user_id)
 
-    def get_user_by_id(self, id: int) -> User | None:
-        """Look up a user by their ID."""
-        stmt = select(User).where(User.id == id)
-        return self.db.execute(stmt).scalar_one_or_none()
-
     def get_user_by_github_id(self, github_id: int) -> User | None:
         """Look up a user by their GitHub ID."""
         stmt = select(User).where(User.github_id == github_id)

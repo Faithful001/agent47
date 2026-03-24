@@ -21,19 +21,17 @@ def list_contracts(
 ):
     """List all contracts for the authenticated user."""
     contracts = ContractService(db).list_contracts(user.id)
-    return {
-        "contracts": [
-            {
-                "id": c.id,
-                "repo_id": c.repo_id,
-                "status": c.status,
-                "attempts": c.attempts,
-                "pr_url": c.pr_url,
-                "created_at": c.created_at.isoformat() if c.created_at else None,
-            }
-            for c in contracts
+    return [
+                {
+                    "id": c.id,
+                    "repo_id": c.repo_id,
+                    "status": c.status,
+                    "attempts": c.attempts,
+                    "pr_url": c.pr_url,
+                    "created_at": c.created_at.isoformat() if c.created_at else None,
+                }
+                for c in contracts
         ]
-    }
 
 
 @router.get("/{contract_id}")

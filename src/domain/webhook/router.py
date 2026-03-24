@@ -14,6 +14,8 @@ from src.config.database import get_db
 from src.domain.contract.service import ContractService
 from src.domain.repository.service import RepositoryService
 from src.domain.user.service import UserService
+from src.domain.auth.router import get_current_user
+from src.domain.user.model import User
 from src.domain.webhook.parser import verify_signature, parse_webhook_event
 from src.infra.queue.tasks.run_pipeline import run_pipeline_task
 from src.config.redis import get_redis
@@ -72,18 +74,34 @@ async def receive_github_webhook(
     # Parse failure (only if relevant)
     failure = parse_webhook_event(event_type, payload)
 
-    if failure is None:
-        # Not a failure event → maybe push tracking
-        if event_type == "push":
-            await _track_push_non_blocking(db, payload)
+    # Get the repo immediately to know context
+    repo_data = payload.get("repository", {})
+    repo_full_name = (repo_data.get("full_name") or "").strip()
+
+    if not repo_full_name:
         return _default_response(event_type, delivery_id)
 
-    # Normalize & validate
-    repo_full_name = (failure.repo_full_name or "").strip()
-    commit_sha = (failure.commit_sha or "").strip()
+    repo_svc = RepositoryService(db)
+    tracked_repo = repo_svc.get_webhook_tracked_repo_by_full_name(repo_full_name)
 
-    if not repo_full_name or not commit_sha:
-        logger.warning("Incomplete failure data - repo or sha missing")
+    if not tracked_repo:
+        logger.info("Ignored: repo not tracked → %s", repo_full_name)
+        return {
+            "status": "ignored",
+            "reason": f"Repository {repo_full_name} is not tracked",
+            "delivery": delivery_id,
+        }
+
+    # If it's just a push event, track it against the known repo and exit
+    if failure is None:
+        if event_type == "push":
+            await _track_push_non_blocking(tracked_repo, db, payload)
+        return _default_response(event_type, delivery_id)
+
+    # Normalize & validate failure
+    commit_sha = (failure.commit_sha or "").strip()
+    if not commit_sha:
+        logger.warning("Incomplete failure data - sha missing")
         return _default_response(event_type, delivery_id)
 
     # Business deduplication: one agent run per broken commit
@@ -102,18 +120,6 @@ async def receive_github_webhook(
             }
     except RedisError as exc:
         logger.warning("Redis unavailable - proceeding without dedup", exc_info=exc)
-
-    # Find tracked repo
-    repo_svc = RepositoryService(db)
-    tracked_repo = repo_svc.get_tracked_repo_by_full_name(repo_full_name)
-
-    if not tracked_repo:
-        logger.info("Ignored: repo not tracked → %s", repo_full_name)
-        return {
-            "status": "ignored",
-            "reason": f"Repository {repo_full_name} is not tracked",
-            "delivery": delivery_id,
-        }
 
     # Get user
     user_svc = UserService(db)
@@ -181,18 +187,12 @@ async def receive_github_webhook(
 
 # Helpers
 
-async def _track_push_non_blocking(db: Session, payload: Dict):
-    repo_data = payload.get("repository", {})
-    repo_full_name = (repo_data.get("full_name") or "").strip()
-
-    if not repo_full_name:
-        return
-
+async def _track_push_non_blocking(tracked_repo, db: Session, payload: Dict):
     try:
-        TrackPush(db).track_push(repo_full_name, payload)
-        logger.debug("Push tracked: %s", repo_full_name)
+        TrackPush(db).track_push(tracked_repo, payload)
+        logger.debug("Push tracked: %s", tracked_repo.full_name)
     except Exception:
-        logger.exception("Push tracking failed (non-fatal) - repo: %s", repo_full_name)
+        logger.exception("Push tracking failed (non-fatal) - repo: %s", tracked_repo.full_name)
 
 
 def _default_response(event_type: str, delivery_id: str) -> Dict[str, Any]:

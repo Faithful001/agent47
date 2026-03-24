@@ -152,14 +152,36 @@ class RepositoryService:
         )
         return list(self.db.execute(stmt).scalars().all())
 
-    def get_tracked_repo(self, repo_id: str) -> Repository | None:
+    def get_tracked_repo(self, repo_id: str, user_id: str) -> Repository | None:
         """Get a tracked repo by its ID."""
-        return self.db.get(Repository, repo_id)
+        stmt = (
+            select(Repository)
+            .where(
+                Repository.id == repo_id,
+                Repository.user_id == user_id,
+                Repository.is_active.is_(True),
+            )
+        )
+        return self.db.execute(stmt).scalar_one_or_none()
 
     def get_tracked_repo_by_full_name(
-        self, full_name: str
+        self, full_name: str, user_id: str
     ) -> Repository | None:
         """Look up a tracked repo by its GitHub full name (owner/repo)."""
+        stmt = (
+            select(Repository)
+            .where(
+                Repository.full_name == full_name,
+                Repository.user_id == user_id,
+                Repository.is_active.is_(True),
+            )
+        )
+        return self.db.execute(stmt).scalar_one_or_none()
+
+    def get_webhook_tracked_repo_by_full_name(
+        self, full_name: str
+    ) -> Repository | None:
+        """Look up a tracked repo by full name WITHOUT user_id (for webhook endpoints)."""
         stmt = (
             select(Repository)
             .where(

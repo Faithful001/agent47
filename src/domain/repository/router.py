@@ -22,7 +22,7 @@ class TrackRepoRequest(BaseModel):
     webhook_callback_url: str = WEBHOOK_CALLBACK_URL
 
 
-@router.get("/list")
+@router.get("/")
 def list_user_repos(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -32,7 +32,20 @@ def list_user_repos(
     Flowchart step: 'Connect repos and orgs'.
     """
     repos = RepositoryService.list_repos(user.github_access_token)
-    return {"repos": repos}
+    return {"message": "All repos", "data": repos}
+
+
+@router.get("/{repo_id}")
+def get_repo(
+    repo_id: str,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Get a specific repo."""
+    repo = RepositoryService(db).get_tracked_repo(repo_id, user.id)
+    if not repo:
+        raise HTTPException(status_code=404, detail="Repo not found")
+    return {"message": "Repo found", "data": repo}
 
 
 @router.get("/orgs")
@@ -42,7 +55,7 @@ def list_user_orgs(
 ):
     """List all orgs the user belongs to."""
     orgs = RepositoryService.list_orgs(user.github_access_token)
-    return {"orgs": orgs}
+    return orgs
 
 
 @router.post("/track")
@@ -61,7 +74,7 @@ def track_repo(
     owner, name = parts[0], parts[1]
 
     # Check if we're already tracking this repo
-    existing_tracked = repo_svc.get_tracked_repo_by_full_name(request.repo_full_name)
+    existing_tracked = repo_svc.get_tracked_repo_by_full_name(request.repo_full_name, user.id)
     if existing_tracked and existing_tracked.user_id == user.id:
         # Already tracked — update the webhook URL on GitHub and return
         if existing_tracked.webhook_id:
@@ -112,16 +125,15 @@ def list_tracked_repos(
 ):
     """List all repos the user is currently tracking."""
     repos = RepositoryService(db).get_tracked_repos(user.id)
-    return {
-        "repos": [
-            {
-                "id": r.id,
-                "full_name": r.full_name,
-                "is_active": r.is_active,
-            }
-            for r in repos
+    return  [
+                {
+                    "id": r.id,
+                    "name": r.name,
+                    "full_name": r.full_name,
+                    "is_active": r.is_active,
+                }
+                for r in repos
         ]
-    }
 
 
 @router.delete("/untrack/{repo_id}")
@@ -132,7 +144,7 @@ def untrack_repo(
 ):
     """Stop tracking a repo — remove the webhook."""
     repo_svc = RepositoryService(db)
-    tracked = repo_svc.get_tracked_repo(repo_id)
+    tracked = repo_svc.get_tracked_repo(repo_id, user.id)
     if not tracked:
         raise HTTPException(status_code=404, detail="Tracked repo not found")
 
@@ -151,4 +163,4 @@ def untrack_repo(
             pass  # Best-effort cleanup
 
     repo_svc.untrack_repo(tracked)
-    return {"message": f"Stopped tracking {tracked.full_name}"}
+    return f"Stopped tracking {tracked.full_name}"

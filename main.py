@@ -3,6 +3,8 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from src.infra.middleware.response_interceptor import ResponseInterceptor
+
 from src.config.config import basic_model, advanced_model
 from src.config.database import create_tables
 
@@ -39,6 +41,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Standardize all JSON responses
+app.add_middleware(ResponseInterceptor)
 
 # --- Register domain routers ---
 app.include_router(auth_router)

@@ -1,6 +1,7 @@
 import logging
 from sqlalchemy.orm import Session
 from src.domain.build.model import Build
+from src.domain.repository.service import RepositoryService
 
 logger = logging.getLogger(__name__)
 
@@ -9,9 +10,10 @@ class TrackPush:
     def __init__(self, db: Session):
         self.db = db
 
-    def track_push(self, repo_full_name: str, push_data: dict) -> None:
+    def track_push(self, tracked_repo, push_data: dict) -> None:
         """Extract push info and save to DB."""
-        logger.info("Push made on repo %s", repo_full_name)
+        logger.info("Push made on repo %s", tracked_repo.full_name)
+
         ref = push_data.get("ref", "")
         branch = ref.replace("refs/heads/", "") if ref.startswith("refs/heads/") else ref
         head_commit = push_data.get("head_commit") or {}
@@ -25,7 +27,8 @@ class TrackPush:
         pusher = pusher_info.get("name", "")
 
         build_record = Build(
-            repo_id=repo_full_name,
+            repo_id=tracked_repo.id,
+            user_id=user_id,
             branch=branch,
             commit_title=commit_title,
             commit_description=commit_description,
