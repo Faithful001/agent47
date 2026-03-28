@@ -47,3 +47,5 @@ advanced_model = init_chat_model(
     timeout=10,
     max_tokens=1000
 )
+
+ENCRYPTION_KEY = os.getenv("ENCRYPTION_KEY", "uE_jK_d-zU2-nQqzYgV06b9N3m-B5QO__6rC_oXl1h0=")

@@ -4,7 +4,7 @@ Repositories service — repo listing, webhook management, and DB operations.
 
 from github import Github
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from src.domain.repository.model import Repository
 
@@ -65,7 +65,7 @@ class RepositoryService:
             hook = repo.create_hook(
                 name="web",
                 config=config,
-                events=["check_suite", "check_run", "workflow_run", "pull_request"],
+                events=["check_suite", "check_run", "workflow_run", "pull_request", "push"],
                 active=True,
             )
             return hook.id
@@ -77,7 +77,7 @@ class RepositoryService:
                 hook.edit(
                     name="web",
                     config=config,
-                    events=["check_run", "pull_request", "status"],
+                    events=["check_run", "pull_request", "status", "push"],
                     active=True,
                 )
                 return hook.id
@@ -101,7 +101,7 @@ class RepositoryService:
         hook.edit(
             name="web",
             config=config,
-            events=["check_run", "pull_request", "status"],
+            events=["check_run", "pull_request", "status", "push"],
             active=True,
         )
 
@@ -127,14 +127,26 @@ class RepositoryService:
         name: str,
         full_name: str,
         webhook_id: int,
+        install_command: str | None = None,
+        build_command: str | None = None,
+        start_command: str | None = None,
+        env_vars: str | None = None,
+        root_directory: str | None = None,
     ) -> Repository:
         """Save a newly tracked repository to the database."""
+        from src.utils.crypto import encrypt_value
+        
         tracked = Repository(
             user_id=user_id,
             owner=owner,
             name=name,
             full_name=full_name,
             webhook_id=webhook_id,
+            install_command=install_command,
+            build_command=build_command,
+            start_command=start_command,
+            env_vars=encrypt_value(env_vars),
+            root_directory=root_directory,
         )
         self.db.add(tracked)
         self.db.commit()
@@ -156,13 +168,14 @@ class RepositoryService:
         """Get a tracked repo by its ID."""
         stmt = (
             select(Repository)
+            .options(joinedload(Repository.builds))
             .where(
                 Repository.id == repo_id,
                 Repository.user_id == user_id,
                 Repository.is_active.is_(True),
             )
         )
-        return self.db.execute(stmt).scalar_one_or_none()
+        return self.db.execute(stmt).unique().scalar_one_or_none()
 
     def get_tracked_repo_by_full_name(
         self, full_name: str, user_id: str

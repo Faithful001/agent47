@@ -1,0 +1,9 @@
+{
+  "site_package_search_strategy": "pep561",
+  "source_directories": [
+    "c:/Users/FaithfulDev/Documents/coding_projects/agent47"
+  ],
+  "search_path": [
+    "c:/Users/FaithfulDev/Documents/coding_projects/agent47"
+  ]
+}

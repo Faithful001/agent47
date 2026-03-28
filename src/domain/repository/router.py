@@ -20,6 +20,11 @@ class TrackRepoRequest(BaseModel):
     """Request body for tracking a new repo."""
     repo_full_name: str
     webhook_callback_url: str = WEBHOOK_CALLBACK_URL
+    install_command: str | None = None
+    build_command: str | None = None
+    start_command: str | None = None
+    env_vars: str | None = None
+    root_directory: str | None = None
 
 
 @router.get("/")
@@ -33,19 +38,6 @@ def list_user_repos(
     """
     repos = RepositoryService.list_repos(user.github_access_token)
     return {"message": "All repos", "data": repos}
-
-
-@router.get("/{repo_id}")
-def get_repo(
-    repo_id: str,
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    """Get a specific repo."""
-    repo = RepositoryService(db).get_tracked_repo(repo_id, user.id)
-    if not repo:
-        raise HTTPException(status_code=404, detail="Repo not found")
-    return {"message": "Repo found", "data": repo}
 
 
 @router.get("/orgs")
@@ -76,7 +68,15 @@ def track_repo(
     # Check if we're already tracking this repo
     existing_tracked = repo_svc.get_tracked_repo_by_full_name(request.repo_full_name, user.id)
     if existing_tracked and existing_tracked.user_id == user.id:
-        # Already tracked — update the webhook URL on GitHub and return
+        # Already tracked — update the configuration and webhook URL
+        from src.utils.crypto import encrypt_value
+        existing_tracked.install_command = request.install_command
+        existing_tracked.build_command = request.build_command
+        existing_tracked.start_command = request.start_command
+        existing_tracked.env_vars = encrypt_value(request.env_vars)
+        existing_tracked.root_directory = request.root_directory
+        db.commit()
+
         if existing_tracked.webhook_id:
             try:
                 RepositoryService.update_webhook(
@@ -114,6 +114,11 @@ def track_repo(
         name=name,
         full_name=request.repo_full_name,
         webhook_id=webhook_id,
+        install_command=request.install_command,
+        build_command=request.build_command,
+        start_command=request.start_command,
+        env_vars=request.env_vars,
+        root_directory=request.root_directory,
     )
     return {"tracked_repo_id": tracked.id, "full_name": tracked.full_name}
 
@@ -134,6 +139,19 @@ def list_tracked_repos(
                 }
                 for r in repos
         ]
+
+
+@router.get("/{repo_id}")
+def get_repo(
+    repo_id: str,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Get a specific repo."""
+    repo = RepositoryService(db).get_tracked_repo(repo_id, user.id)
+    if not repo:
+        raise HTTPException(status_code=404, detail="Repo not found")
+    return {"message": "Repo found", "data": repo}
 
 
 @router.delete("/untrack/{repo_id}")

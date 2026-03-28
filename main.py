@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from src.infra.middleware.response_interceptor import ResponseInterceptor
+from src.common.middleware.response_interceptor import ResponseInterceptor
 
 from src.config.config import basic_model, advanced_model
 from src.config.database import create_tables

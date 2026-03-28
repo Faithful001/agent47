@@ -28,7 +28,7 @@ class TrackPush:
 
         build_record = Build(
             repo_id=tracked_repo.id,
-            user_id=user_id,
+            user_id=tracked_repo.user_id,
             branch=branch,
             commit_title=commit_title,
             commit_description=commit_description,
@@ -37,3 +37,7 @@ class TrackPush:
         )
         self.db.add(build_record)
         self.db.commit()
+
+        # Trigger the custom CI task
+        from src.infra.queue.tasks.run_ci_task import run_ci_task
+        run_ci_task.delay(build_id=build_record.id, repo_id=tracked_repo.id)
