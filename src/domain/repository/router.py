@@ -2,6 +2,8 @@
 Repositories router — connect, track, and manage GitHub repos.
 """
 
+from src.utils.crypto import decrypt_value
+from src.domain.repository.dto.update_repo_dto import UpdateRepoDto
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -151,16 +153,17 @@ def get_repo(
     repo = RepositoryService(db).get_tracked_repo(repo_id, user.id)
     if not repo:
         raise HTTPException(status_code=404, detail="Repo not found")
+    repo.env_vars = decrypt_value(repo.env_vars)
     return {"message": "Repo found", "data": repo}
 
 
-@router.delete("/untrack/{repo_id}")
+@router.post("/untrack/{repo_id}")
 def untrack_repo(
     repo_id: str,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Stop tracking a repo — remove the webhook."""
+    """Stop tracking a repo. remove the webhook."""
     repo_svc = RepositoryService(db)
     tracked = repo_svc.get_tracked_repo(repo_id, user.id)
     if not tracked:
@@ -182,3 +185,44 @@ def untrack_repo(
 
     repo_svc.untrack_repo(tracked)
     return f"Stopped tracking {tracked.full_name}"
+
+
+@router.patch("/{repo_id}")
+def update_repo(repo_id: str, payload: UpdateRepoDto, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    repo_svc = RepositoryService(db)
+    tracked = repo_svc.get_tracked_repo(repo_id, user.id)
+    if not tracked:
+        raise HTTPException(status_code=404, detail="Tracked repo not found")
+    repo_svc.update_repo(repo_id, user.id, payload)
+    return "Repo updated successfully"
+    
+
+
+@router.delete("/{repo_id}")
+def delete_repo(
+    repo_id: str,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Delete a tracked repo from the database."""
+    repo_svc = RepositoryService(db)
+    tracked = repo_svc.get_tracked_repo(repo_id, user.id)
+    if not tracked:
+        raise HTTPException(status_code=404, detail="Tracked repo not found")
+
+    # Ensure the repo belongs to the authenticated user
+    if tracked.user_id != user.id:
+        raise HTTPException(status_code=403, detail="Not your repository")
+
+    if tracked.webhook_id:
+        try:
+            RepositoryService.remove_webhook(
+                token=user.github_access_token,
+                repo_full_name=tracked.full_name,
+                webhook_id=tracked.webhook_id,
+            )
+        except Exception:
+            pass  # Best-effort cleanup
+
+    repo_svc.delete_repo(repo_id, user.id)
+    return f"Deleted {tracked.full_name}"

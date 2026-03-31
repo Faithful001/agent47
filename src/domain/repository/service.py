@@ -2,10 +2,12 @@
 Repositories service — repo listing, webhook management, and DB operations.
 """
 
+from src.utils.crypto import encrypt_value
+from src.domain.repository.dto.update_repo_dto import UpdateRepoDto
+from fastapi import HTTPException
 from github import Github
 from sqlalchemy import select
 from sqlalchemy.orm import Session, joinedload
-
 from src.domain.repository.model import Repository
 
 
@@ -152,6 +154,31 @@ class RepositoryService:
         self.db.commit()
         self.db.refresh(tracked)
         return tracked
+
+    def update_repo(self, repo_id: str, user_id: str, payload: UpdateRepoDto) -> Repository:
+        """Update a repo"""
+        repo = self.get_tracked_repo(repo_id, user_id)
+        if not repo:
+            raise HTTPException(status_code=404, detail="Tracked repo not found")
+        if repo.user_id != user_id:
+            raise HTTPException(status_code=403, detail="Not your repository")
+
+        updates = payload.model_dump(exclude_unset=True)
+
+        for key, value in updates.items():
+            setattr(repo, key, encrypt_value(value) if key == "env_vars" else value)
+
+        self.db.commit()
+        self.db.refresh(repo)
+        return repo
+
+    def delete_repo(self, repo_id: str, user_id: str) -> None:
+        """Delete a tracked repo from the database."""
+        repo = self.get_tracked_repo(repo_id, user_id)
+        if not repo:
+            raise HTTPException(status_code=404, detail="Repo not found")
+        self.db.delete(repo)
+        self.db.commit()
 
     def get_tracked_repos(self, user_id: str) -> list[Repository]:
         """List all active tracked repos for a user."""
