@@ -22,7 +22,7 @@ class Repository(Base):
     )
     user: Mapped["User"] = relationship("User", back_populates="repositories")
     builds: Mapped[list["Build"]] = relationship(
-        "Build", back_populates="repo", cascade="all, delete-orphan"
+        "Build", back_populates="repo", cascade="all, delete-orphan", order_by="desc(Build.created_at)"
     )
     owner: Mapped[str] = mapped_column(String, nullable=False)
     name: Mapped[str] = mapped_column(String, nullable=False)

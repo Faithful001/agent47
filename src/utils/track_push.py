@@ -2,6 +2,7 @@ import logging
 from sqlalchemy.orm import Session
 from src.domain.build.model import Build
 from src.domain.repository.service import RepositoryService
+from src.infra.queue.tasks.run_ci_task import run_ci_task
 
 logger = logging.getLogger(__name__)
 
@@ -39,5 +40,5 @@ class TrackPush:
         self.db.commit()
 
         # Trigger the custom CI task
-        from src.infra.queue.tasks.run_ci_task import run_ci_task
-        run_ci_task.delay(build_id=build_record.id, repo_id=tracked_repo.id)
+        logger.info("About to run the custom CI task for build %s", build_record.id)
+        run_ci_task.delay(build_id=str(build_record.id), repo_id=str(tracked_repo.id))

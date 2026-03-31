@@ -14,7 +14,16 @@ from src.domain.webhook.router import router as webhook_router
 from src.domain.contract.router import router as contract_router
 from src.domain.build.router import router as build_router
 from src.domain.websocket.router import router as websocket_router
+import logging
 
+# --- Configure Logging ---
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
+
+logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(application: FastAPI):
@@ -65,9 +74,9 @@ def root():
 
 
 if __name__ == "__main__":
-    print("Agent47 initialized.")
-    print(f"Handler model: {basic_model.model}")
-    print(f"Operative model: {advanced_model.model}")
+    logger.info("Agent47 initialized.")
+    logger.info(f"Handler model: {basic_model.model}")
+    logger.info(f"Operative model: {advanced_model.model}")
     
     import uvicorn
     uvicorn.run("main:app", host="127.0.0.1", port=8000, reload=True)

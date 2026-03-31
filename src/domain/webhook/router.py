@@ -156,11 +156,11 @@ async def receive_github_webhook(
         raise HTTPException(500, "Failed to create contract")
 
     # Enqueue pipeline
-    repo_url = f"https://github.com/{tracked_repo.full_name}.git"
+    repo_url_with_token = f"https://oauth2:{user.github_access_token}@github.com/{repo.full_name}.git"
     run_pipeline_task.delay(
         contract_id=contract.id,
         user_id=user.id,
-        repo_url=repo_url,
+        repo_url=repo_url_with_token,
     )
 
     logger.info(

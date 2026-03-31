@@ -1,5 +1,6 @@
 .env
 venv
+.venv
 implementation_plan.txt
 __pycache__/
 *.py[cod]
