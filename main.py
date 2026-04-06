@@ -15,6 +15,7 @@ from src.domain.contract.router import router as contract_router
 from src.domain.build.router import router as build_router
 from src.domain.websocket.router import router as websocket_router
 import logging
+import os
 
 # --- Configure Logging ---
 logging.basicConfig(
@@ -42,10 +43,12 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+webhook_url = os.getenv("WEBHOOK_CALLBACK_URL").replace("/webhooks/github", "")
+
 # CORS — allow the React frontend to call the API
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "https://595e-102-90-97-165.ngrok-free.app"],
+    allow_origins=["http://localhost:3000", webhook_url],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

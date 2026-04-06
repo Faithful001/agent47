@@ -13,8 +13,7 @@ from src.domain.contract.model import Contract
 from src.domain.user.model import User
 from src.git.service import clone_repo, create_fix_branch, commit_and_push
 from src.agents.graph import workflow
-from src.config.redis import get_redis
-from src.infra.pubsub.manager import PubSubManager
+
 
 logger = logging.getLogger(__name__)
 
@@ -98,8 +97,10 @@ class ContractService:
                 "Cloning %s branch '%s'...",
                 repo_url, contract.source_branch,
             )
+            clean_url = f"https://github.com/{contract.repo_id}.git"
             workspace_dir = clone_repo(
-                repo_url=repo_url,
+                # repo_url=repo_url,
+                repo_url=clean_url,
                 branch=contract.source_branch,
                 token=user.github_access_token,
             )
@@ -176,34 +177,28 @@ class ContractService:
         return contract
 
     def _publish_contract_update(self, contract: Contract):
-        import asyncio
-        from redis.asyncio import Redis
-        from src.config.redis import get_redis_pool
-        from src.infra.pubsub.manager import PubSubManager
-        
-        async def publish_async():
-            pool = get_redis_pool()
-            redis = Redis(connection_pool=pool)
-            pubsub = PubSubManager(redis)
-            
-            message = {
-                "type": "contract_update",
-                "contract_id": str(contract.id),
-                "repo_id": contract.repo_id,
-                "commit_sha": contract.commit_sha,
-                "status": contract.status,
-                "attempts": contract.attempts,
-                "pr_url": contract.pr_url,
-                "fix_summary": contract.fix_summary,
-                "error_message": contract.error_message,
-                "updated_at": contract.updated_at.isoformat() if contract.updated_at else None
-            }
-            
-            channel = f"contract:user:{contract.user_id}"
-            await pubsub.publish(channel, message)
-            
+        import json
+        import redis as sync_redis
+        from src.config.redis import REDIS_URL
+
+        message = {
+            "type": "contract_update",
+            "contract_id": str(contract.id),
+            "repo_id": contract.repo_id,
+            "commit_sha": contract.commit_sha,
+            "status": contract.status,
+            "attempts": contract.attempts,
+            "pr_url": contract.pr_url,
+            "fix_summary": contract.fix_summary,
+            "error_message": contract.error_message,
+            "updated_at": contract.updated_at.isoformat() if contract.updated_at else None
+        }
+
+        channel = f"contract:user:{contract.user_id}"
+
         try:
-            loop = asyncio.get_running_loop()
-            loop.create_task(publish_async())
-        except RuntimeError:
-            asyncio.run(publish_async())
+            r = sync_redis.from_url(REDIS_URL, decode_responses=True)
+            r.publish(channel, json.dumps(message))
+            r.close()
+        except Exception as exc:
+            logger.warning("Failed to publish contract update via Redis: %s", exc)

@@ -32,6 +32,7 @@ class Repository(Base):
     install_command: Mapped[str | None] = mapped_column(String, nullable=True)
     build_command: Mapped[str | None] = mapped_column(String, nullable=True)
     start_command: Mapped[str | None] = mapped_column(String, nullable=True)
+    test_command: Mapped[str | None] = mapped_column(String, nullable=True)
     env_vars: Mapped[str | None] = mapped_column(String, nullable=True)
     root_directory: Mapped[str | None] = mapped_column(String, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)

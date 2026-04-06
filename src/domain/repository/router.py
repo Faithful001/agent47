@@ -25,6 +25,7 @@ class TrackRepoRequest(BaseModel):
     install_command: str | None = None
     build_command: str | None = None
     start_command: str | None = None
+    test_command: str | None = None
     env_vars: str | None = None
     root_directory: str | None = None
 
@@ -75,6 +76,7 @@ def track_repo(
         existing_tracked.install_command = request.install_command
         existing_tracked.build_command = request.build_command
         existing_tracked.start_command = request.start_command
+        existing_tracked.test_command = request.test_command
         existing_tracked.env_vars = encrypt_value(request.env_vars)
         existing_tracked.root_directory = request.root_directory
         db.commit()
@@ -119,6 +121,7 @@ def track_repo(
         install_command=request.install_command,
         build_command=request.build_command,
         start_command=request.start_command,
+        test_command=request.test_command,
         env_vars=request.env_vars,
         root_directory=request.root_directory,
     )

@@ -132,6 +132,7 @@ class RepositoryService:
         install_command: str | None = None,
         build_command: str | None = None,
         start_command: str | None = None,
+        test_command: str | None = None,
         env_vars: str | None = None,
         root_directory: str | None = None,
     ) -> Repository:
@@ -147,6 +148,7 @@ class RepositoryService:
             install_command=install_command,
             build_command=build_command,
             start_command=start_command,
+            test_command=start_command,
             env_vars=encrypt_value(env_vars),
             root_directory=root_directory,
         )
