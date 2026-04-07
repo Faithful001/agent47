@@ -33,7 +33,7 @@ def handler_node(state: ContractState):
     """The Handler analyses the bug report and identifies relevant files."""
     error_msg = state.get("error_message", "")
     bug = state.get("bug_description", "") or error_msg
-    repo = state.get("repo_path", "/workspace")
+    local_repo = state.get("workspace_dir", "")
 
     result = handler_agent.invoke(
         {
@@ -41,7 +41,8 @@ def handler_node(state: ContractState):
                 {
                     "role": "user",
                     "content": (
-                        f"Analyze this bug in repo at {repo}: {bug}"
+                        f"Analyze this bug in repo at {local_repo}: {bug}\n"
+                        f"Note: Use absolute paths when calling read_file by joining the repo path with the relative paths."
                     ),
                 }
             ]

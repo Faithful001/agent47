@@ -4,10 +4,17 @@ Git Service
 
 import os
 import shutil
+import stat
 
 from git import Repo
 
 from src.config.config import WORKSPACE_BASE_DIR
+
+
+def _remove_readonly(func, path, _):
+    """Clear the readonly bit and reattempt the removal."""
+    os.chmod(path, stat.S_IWRITE)
+    func(path)
 
 
 def clone_repo(
@@ -30,15 +37,34 @@ def clone_repo(
 
     workspace_dir = os.path.join(WORKSPACE_BASE_DIR, workspace_name)
 
-    if os.path.exists(workspace_dir):
-        shutil.rmtree(workspace_dir)
-
-    Repo.clone_from(
-        url=authed_url,
-        to_path=workspace_dir,
-        branch=branch,
-    )
+    if os.path.exists(os.path.join(workspace_dir, ".git")):
+        pull_repo(workspace_dir, authed_url, branch)
+    else:
+        if os.path.exists(workspace_dir):
+            shutil.rmtree(workspace_dir, onexc=_remove_readonly)
+            
+        Repo.clone_from(
+            url=authed_url,
+            to_path=workspace_dir,
+            branch=branch,
+        )
     return workspace_dir
+
+
+def pull_repo(repo_dir: str, authed_url: str, branch: str) -> None:
+    """Fetch and reset an existing locally cloned repo to match remote."""
+    repo = Repo(repo_dir)
+
+    # Ensure authenticated URL is set
+    repo.remotes.origin.set_url(authed_url)
+    repo.git.fetch("origin")
+    
+    # Clean up any local changes or untracked files before checkout
+    repo.git.reset("--hard")
+    repo.git.clean("-fdx")
+    
+    repo.git.checkout(branch)
+    repo.git.reset("--hard", f"origin/{branch}")
 
 
 def create_fix_branch(repo_dir: str, branch_name: str) -> None:

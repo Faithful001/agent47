@@ -36,16 +36,16 @@ basic_model = init_chat_model(
     model="gemini-3-flash-preview",
     model_provider="google_genai",
     temperature=0.5,
-    timeout=10,
-    max_tokens=1000
+    timeout=60,
+    max_tokens=8192
 )
 
 advanced_model = init_chat_model(
-    model="gemini-3.1-pro",
+    model="gemini-3-flash-preview",
     model_provider="google_genai",
     temperature=0.5,
-    timeout=10,
-    max_tokens=1000
+    timeout=120,
+    max_tokens=8192
 )
 
 ENCRYPTION_KEY = os.getenv("ENCRYPTION_KEY", "uE_jK_d-zU2-nQqzYgV06b9N3m-B5QO__6rC_oXl1h0=")
