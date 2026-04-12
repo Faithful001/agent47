@@ -4,7 +4,6 @@ version = "0.1.0"
 description = "Agent 47: A lethal multi-agent system for autonomous bug fixing and code refactoring in isolated environments."
 authors = ["Faithful King <your.email@example.com>"]
 readme = "README.md"
-package-mode = false
 
 [tool.poetry.dependencies]
 python = ">=3.11,<4.0"
@@ -80,6 +79,8 @@ xxhash = "3.6.0"
 zstandard = "0.25.0"
 celery = "^5.6.2"
 redis = "^7.3.0"
+langchain-huggingface = "^1.2.1"
+huggingface-hub = "^1.9.1"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.1.1"

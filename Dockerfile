@@ -9,4 +9,5 @@ COPY requirements.txt .
 RUN pip install -r requirements.txt
 COPY . .
 
-CMD ["celery", "-A", "src.infra.queue", "worker", "--loglevel=info"]
+ENV PYTHONPATH="/app/src"
+CMD ["celery", "-A", "agent47.infra.queue", "worker", "--loglevel=info"]
