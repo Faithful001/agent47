@@ -8,7 +8,7 @@ celery = Celery(
     broker=REDIS_URL,
     backend=REDIS_URL,
     include=[
-        "src.infra.queue.tasks.run_ci_task",
-        "src.infra.queue.tasks.run_pipeline",
+        "agent47.infra.queue.tasks.run_ci_task",
+        "agent47.infra.queue.tasks.run_pipeline",
     ]
 )

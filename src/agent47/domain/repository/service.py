@@ -79,7 +79,7 @@ class RepositoryService:
                 hook.edit(
                     name="web",
                     config=config,
-                    events=["check_run", "pull_request", "status", "push"],
+                    events=["check_suite", "check_run", "workflow_run", "pull_request", "push"],
                     active=True,
                 )
                 return hook.id

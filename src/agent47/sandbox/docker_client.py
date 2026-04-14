@@ -90,6 +90,35 @@ class Sandbox:
         self.container.put_archive(container_dir, tar_stream)
         
         
+    def copy_repo_from_container(self, container_dir: str, local_dir: str):
+        """Copy the workspace back from the container to the local directory.
+
+        Extracts a tar archive of `container_dir` from the container and
+        unpacks it into `local_dir`, overwriting existing files so that
+        local changes match what the Operative modified inside the sandbox.
+        """
+        if not self.container:
+            raise RuntimeError("Sandbox is not running.")
+
+        bits, _ = self.container.get_archive(container_dir)
+
+        tar_stream = io.BytesIO()
+        for chunk in bits:
+            tar_stream.write(chunk)
+        tar_stream.seek(0)
+
+        with tarfile.open(fileobj=tar_stream, mode="r") as tar:
+            # The archive root is the basename of container_dir (e.g. "workspace").
+            # We need to strip that top-level directory so files land directly in local_dir.
+            prefix = os.path.basename(container_dir.rstrip("/")) + "/"
+            for member in tar.getmembers():
+                if member.name.startswith(prefix):
+                    member.name = member.name[len(prefix):]
+                elif member.name == prefix.rstrip("/"):
+                    continue  # skip the root directory entry itself
+                if member.name:  # skip empty names
+                    tar.extract(member, local_dir)
+
     def read_file_from_container(self, filepath: str) -> str:
         """Reads a file from the container."""
         if not self.container:

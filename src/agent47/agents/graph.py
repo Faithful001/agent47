@@ -88,6 +88,18 @@ def operative_node(state: ContractState):
     }
 
 
+def sync_from_sandbox_node(state: ContractState):
+    """Copy modified files from sandbox back to the local workspace.
+
+    This MUST run before teardown so the local clone reflects
+    whatever the Operative changed inside the container.
+    """
+    workspace = state.get("workspace_dir", "")
+    if workspace and state.get("is_resolved"):
+        sandbox.copy_repo_from_container("/workspace", workspace)
+    return {}
+
+
 def teardown_sandbox_node(state: ContractState):
     """Stop and clean up the Docker sandbox."""
     sandbox.stop()
@@ -110,6 +122,7 @@ graph = StateGraph(ContractState)
 graph.add_node("setup_sandbox", setup_sandbox_node)
 graph.add_node("handler", handler_node)
 graph.add_node("operative", operative_node)
+graph.add_node("sync_from_sandbox", sync_from_sandbox_node)
 graph.add_node("teardown_sandbox", teardown_sandbox_node)
 
 graph.set_entry_point("setup_sandbox")
@@ -118,8 +131,9 @@ graph.add_edge("handler", "operative")
 graph.add_conditional_edges(
     "operative",
     should_retry,
-    {"retry": "operative", "done": "teardown_sandbox"},
+    {"retry": "operative", "done": "sync_from_sandbox"},
 )
+graph.add_edge("sync_from_sandbox", "teardown_sandbox")
 graph.add_edge("teardown_sandbox", END)
 
 workflow = graph.compile()

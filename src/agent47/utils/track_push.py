@@ -11,7 +11,7 @@ class TrackPush:
     def __init__(self, db: Session):
         self.db = db
 
-    def track_push(self, tracked_repo, push_data: dict) -> None:
+    def track_push(self, tracked_repo, push_data: dict):
         """Extract push info and save to DB."""
         logger.info("Push made on repo %s", tracked_repo.full_name)
 
