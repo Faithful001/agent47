@@ -72,12 +72,12 @@ FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
 
 # Option 1: Groq (very fast)
 basic_model = ChatOpenAI(
-    base_url="https://api.groq.com/openai/v1",
-    api_key=os.getenv("GROQ_API_KEY"),
-    model="llama-3.3-70b-versatile",   # or "qwen3-72b" etc.
-    temperature=0.5,
-    max_tokens=8192,
-)
+        base_url="https://api.groq.com/openai/v1",
+        api_key=os.getenv("GROQ_API_KEY"),
+        model="llama-3.3-70b-versatile",   # or "qwen3-72b" etc.
+        temperature=0.5,
+        max_tokens=8192,
+    )
 advanced_model = init_chat_model(
         model="gemini-2.5-flash",
         model_provider="google_genai",

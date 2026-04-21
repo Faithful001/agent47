@@ -1,7 +1,8 @@
 import logging
 import json
 import os
-import tempfile
+import time
+from filelock import FileLock
 import subprocess
 import docker
 from agent47.config.database import SessionLocal
@@ -11,6 +12,8 @@ from agent47.domain.build.model import Build
 from agent47.infra.queue import celery
 
 logger = logging.getLogger(__name__)
+
+REPO_CACHE_ROOT = os.environ.get("REPO_CACHE_ROOT", "/tmp/repo_cache")
 
 
 def detect_base_image(build_dir: str) -> str:
@@ -33,6 +36,37 @@ def detect_base_image(build_dir: str) -> str:
     logger.warning("Could not detect tech stack, falling back to ubuntu:22.04")
     return "ubuntu:22.04"
 
+def prepare_repo(repo, build, clone_url: str) -> str:
+    os.makedirs(REPO_CACHE_ROOT, exist_ok=True)
+    cache_dir = os.path.join(REPO_CACHE_ROOT, str(repo.id))
+    branch = build.branch if build else (repo.default_branch or "main")
+
+    lock_file = cache_dir + ".lock"
+    with FileLock(lock_file):
+        if os.path.exists(os.path.join(cache_dir, ".git")):
+            logger.info("Repo %s already cached, pulling branch=%s", repo.full_name, branch)
+            subprocess.run(["git", "fetch", "origin"], cwd=cache_dir, check=True, capture_output=True)
+            subprocess.run(["git", "checkout", branch], cwd=cache_dir, check=True, capture_output=True)
+            subprocess.run(["git", "reset", "--hard", f"origin/{branch}"], cwd=cache_dir, check=True, capture_output=True)
+        else:
+            logger.info("Shallow-cloning repo %s (branch=%s) to %s", repo.full_name, branch, cache_dir)
+            os.makedirs(cache_dir, exist_ok=True)
+            subprocess.run(
+                ["git", "clone", "--depth", "1", "--branch", branch, clone_url, cache_dir],
+                check=True, capture_output=True,
+            )
+
+        if build and build.commit_sha:
+            logger.info("Fetching specific commit %s", build.commit_sha)
+            subprocess.run(["git", "fetch", "--depth", "1", "origin", build.commit_sha], cwd=cache_dir, check=True, capture_output=True)
+            subprocess.run(["git", "checkout", build.commit_sha], cwd=cache_dir, check=True, capture_output=True)
+
+    build_dir = cache_dir
+    if repo.root_directory:
+        build_dir = os.path.join(cache_dir, repo.root_directory.strip("/"))
+
+    return build_dir
+
 
 @celery.task(name="run_ci_task")
 def run_ci_task(build_id: str, repo_id: str):
@@ -42,7 +76,7 @@ def run_ci_task(build_id: str, repo_id: str):
         build = db.query(Build).filter(Build.id == build_id).first()
         repo = db.query(Repository).filter(Repository.id == repo_id).first()
 
-        if not build or not repo:
+        if not repo:
             logger.error("Build or Repo not found")
             return
 
@@ -72,86 +106,77 @@ def run_ci_task(build_id: str, repo_id: str):
 
         client = docker.from_env(timeout=900)
 
-        with tempfile.TemporaryDirectory() as temp_dir:
-            logger.info("Cloning repo to %s", temp_dir)
-            subprocess.run(["git", "clone", clone_url, temp_dir], check=True, capture_output=True)
-            subprocess.run(["git", "checkout", build.commit_sha], cwd=temp_dir, check=True, capture_output=True)
+        build_dir = prepare_repo(repo, build, clone_url)
+        base_image = detect_base_image(build_dir)
+        logger.info("Detected base image: %s for repo %s", base_image, repo.full_name)
 
-            build_dir = temp_dir
-            if repo.root_directory:
-                build_dir = os.path.join(temp_dir, repo.root_directory.strip('/'))
+        script = f"""
+        cd /app
+        {install_cmd}
+        {build_cmd}
+        {test_cmd}
+        """
 
-            base_image = detect_base_image(build_dir)
-            logger.info("Detected base image: %s for repo %s", base_image, repo.full_name)
-
-            script = f"""
-            cd /app
-            {install_cmd}
-            {build_cmd}
-            {test_cmd}
-            """
+        try:
+            container = client.containers.run(
+                image=base_image,
+                command=["/bin/bash", "-c", script],
+                environment=env_vars,
+                volumes={build_dir: {"bind": "/app", "mode": "rw"}},
+                working_dir="/app",
+                network_disabled=False,
+                detach=True,
+            )
 
             try:
-                container = client.containers.run(
-                    image=base_image,
-                    command=["/bin/bash", "-c", script],
-                    environment=env_vars,
-                    volumes={build_dir: {"bind": "/app", "mode": "rw"}},
-                    working_dir="/app",
-                    network_disabled=False,
-                    detach=True,
-                )
+                deadline = time.time() + 900
+                while time.time() < deadline:
+                    container.reload()
+                    if container.status in ("exited", "dead"):
+                        break
+                    time.sleep(5)
+                else:
+                    raise TimeoutError(
+                        f"Container did not finish within 900s for build {build_id}"
+                    )
 
+                exit_code = container.attrs["State"]["ExitCode"]
+                if exit_code != 0:
+                    logs = container.logs(stderr=True).decode("utf-8")
+                    raise docker.errors.ContainerError(
+                        container, exit_code, script, base_image, logs.encode()
+                    )
+                logger.info("CI pipeline succeeded for %s", build.commit_sha)
+            except Exception:
                 try:
-                    import time
-                    deadline = time.time() + 900
-                    while time.time() < deadline:
-                        container.reload()
-                        if container.status in ("exited", "dead"):
-                            break
-                        time.sleep(5)
-                    else:
-                        raise TimeoutError(
-                            f"Container did not finish within 900s for build {build_id}"
-                        )
-
-                    exit_code = container.attrs["State"]["ExitCode"]
-                    if exit_code != 0:
-                        logs = container.logs(stderr=True).decode("utf-8")
-                        raise docker.errors.ContainerError(
-                            container, exit_code, script, base_image, logs.encode()
-                        )
-                    logger.info("CI pipeline succeeded for %s", build.commit_sha)
+                    container.kill()
                 except Exception:
-                    try:
-                        container.kill()
-                    except Exception:
-                        pass  # container already stopped
-                    raise
-                finally:
-                    container.remove(force=True)
+                    pass
+                raise
+            finally:
+                container.remove(force=True)
 
-            except docker.errors.ContainerError as e:
-                logger.warning("CI pipeline FAILED for %s", build.commit_sha)
-                error_logs = e.stderr.decode('utf-8') if e.stderr else str(e)
+        except docker.errors.ContainerError as e:
+            logger.warning("CI pipeline FAILED for %s", build.commit_sha)
+            error_logs = e.stderr.decode('utf-8') if e.stderr else str(e)
 
-                contract_svc = ContractService(db)
-                contract = contract_svc.create_contract(
-                    repo_id=repo.full_name,
-                    user_id=repo.user_id,
-                    trigger_event="push_ci_failure",
-                    error_message=f"Custom CI failed:\n{error_logs[-2000:]}",
-                    source_branch=build.branch,
-                    commit_sha=build.commit_sha,
-                    pr_number=None,
-                )
+            contract_svc = ContractService(db)
+            contract = contract_svc.create_contract(
+                repo_id=repo.full_name,
+                user_id=repo.user_id,
+                trigger_event="push_ci_failure",
+                error_message=f"Custom CI failed:\n{error_logs[-2000:]}",
+                source_branch=build.branch,
+                commit_sha=build.commit_sha,
+                pr_number=None,
+            )
 
-                from agent47.infra.queue.tasks.run_pipeline import run_pipeline_task
-                run_pipeline_task.delay(
-                    contract_id=contract.id,
-                    user_id=repo.user_id,
-                    repo_url=f"https://oauth2:{github_token}@github.com/{repo.full_name}.git",
-                )
+            from agent47.infra.queue.tasks.run_pipeline import run_pipeline_task
+            run_pipeline_task.delay(
+                contract_id=contract.id,
+                user_id=repo.user_id,
+                repo_url=f"https://oauth2:{github_token}@github.com/{repo.full_name}.git",
+            )
 
     except Exception:
         logger.exception("run_ci_task failed completely for build %s", build_id)

@@ -135,6 +135,7 @@ class RepositoryService:
         test_command: str | None = None,
         env_vars: str | None = None,
         root_directory: str | None = None,
+        default_branch: str = "main"
     ) -> Repository:
         """Save a newly tracked repository to the database."""
         from agent47.utils.crypto import encrypt_value
@@ -151,6 +152,7 @@ class RepositoryService:
             test_command=start_command,
             env_vars=encrypt_value(env_vars),
             root_directory=root_directory,
+            default_branch=default_branch
         )
         self.db.add(tracked)
         self.db.commit()

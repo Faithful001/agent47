@@ -40,15 +40,15 @@ async def receive_github_webhook(
     3. Push event tracking (non-blocking side effect)
     """
     # Security & fast path
-    body = await request.body()
-    signature = request.headers.get("X-Hub-Signature-256", "")
+    body = await request.body() # get the request payload
+    signature = request.headers.get("X-Hub-Signature-256", "") # get the signature
 
-    if not verify_signature(body, signature):
+    if not verify_signature(body, signature): # verify the signature
         logger.warning("Invalid webhook signature received")
         raise HTTPException(status_code=401, detail="Invalid signature")
 
-    event_type = request.headers.get("X-GitHub-Event", "unknown")
-    delivery_id = request.headers.get("X-GitHub-Delivery", "unknown")
+    event_type = request.headers.get("X-GitHub-Event", "unknown") # get the event type
+    delivery_id = request.headers.get("X-GitHub-Delivery", "unknown") # get the delivery id
 
     logger.debug("Webhook delivery %s - event: %s", delivery_id, event_type)
 
@@ -61,7 +61,7 @@ async def receive_github_webhook(
     # Quick duplicate check: same delivery ID
     delivery_key = f"webhook:processed:{delivery_id}"
     try:
-        if await redis.exists(delivery_key):
+        if await redis.exists(delivery_key): # check if delivery exists in our redis record
             logger.debug("Duplicate delivery skipped: %s", delivery_id)
             return {
                 "status": "duplicate",
@@ -95,7 +95,15 @@ async def receive_github_webhook(
     # If it's just a push event, track it against the known repo and exit
     if failure is None:
         if event_type == "push":
-            await _track_push_non_blocking(tracked_repo, db, payload)
+            ref = payload.get("ref", "")
+            branch = ref.replace("refs/heads/", "") if ref.startswith("refs/heads/") else ref
+            
+            target_branch = tracked_repo.default_branch or "main"
+            if branch == target_branch:
+                await _track_push_non_blocking(tracked_repo, db, payload)
+            else:
+                logger.info("Ignored push to branch %s (tracking %s)", branch, target_branch)
+                
         return _default_response(event_type, delivery_id)
 
     # Normalize & validate failure
@@ -146,7 +154,6 @@ async def receive_github_webhook(
             source_branch=failure.branch,
             commit_sha=commit_sha,
             pr_number=failure.pr_number,
-            delivery_id=delivery_id,
         )
 
     try:

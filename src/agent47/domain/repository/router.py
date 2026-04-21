@@ -28,6 +28,7 @@ class TrackRepoRequest(BaseModel):
     test_command: str | None = None
     env_vars: str | None = None
     root_directory: str | None = None
+    default_branch: str = "main"
 
 
 @router.get("/")
@@ -124,6 +125,7 @@ def track_repo(
         test_command=request.test_command,
         env_vars=request.env_vars,
         root_directory=request.root_directory,
+        default_branch=request.default_branch
     )
     return {"tracked_repo_id": tracked.id, "full_name": tracked.full_name}
 

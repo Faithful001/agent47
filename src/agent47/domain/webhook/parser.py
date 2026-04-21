@@ -43,6 +43,8 @@ def parse_webhook_event(event_type: str, payload: dict) -> WebhookFailure | None
         return _parse_workflow_run(payload)
     if event_type == "pull_request":
         return _parse_pull_request(payload)
+    # if event_type == "push":
+    #     return _parse_push(payload)
     return None
 
 def _parse_check_suite(payload: dict) -> WebhookFailure | None:
@@ -175,3 +177,32 @@ def _parse_pull_request(payload: dict) -> WebhookFailure | None:
         commit_sha=pr.get("head", {}).get("sha", ""),
         pr_number=pr.get("number"),
     )
+
+# def _parse_push(payload: dict) -> WebhookFailure | None:
+#     """Extract info from a push event."""
+#     ref = payload.get("ref", "")
+
+#     # Only track branch pushes, ignore tag pushes
+#     if not ref.startswith("refs/heads/"):
+#         return None
+
+#     # Ignore branch deletions (after sha is all zeros)
+#     after = payload.get("after", "")
+#     if after == "0" * 40:
+#         return None
+
+#     head_commit = payload.get("head_commit") or {}
+#     commit_sha = head_commit.get("id", "") or after
+#     if not commit_sha:
+#         return None
+
+#     repo = payload.get("repository", {})
+#     branch = ref.replace("refs/heads/", "")
+#     commit_message = head_commit.get("message", "Push event")
+
+#     return WebhookFailure(
+#         repo_full_name=repo.get("full_name", ""),
+#         branch=branch,
+#         error_message=f"Push to {branch}: {commit_message.splitlines()[0]}",
+#         commit_sha=commit_sha,
+#     )
