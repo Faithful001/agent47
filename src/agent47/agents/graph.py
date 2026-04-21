@@ -3,6 +3,9 @@ LangGraph workflow that connects the Handler and Operative agents,
 with sandbox setup and PR creation nodes.
 """
 
+import logging
+import time
+
 from langgraph.graph import StateGraph, END
 
 from agent47.state import ContractState
@@ -10,8 +13,37 @@ from agent47.agents.handler import handler_agent
 from agent47.agents.operative import operative_agent
 from agent47.sandbox.tools import sandbox
 
+logger = logging.getLogger(__name__)
+
 
 MAX_ATTEMPTS = 5
+API_MAX_RETRIES = 6
+API_BASE_DELAY = 10  # seconds
+
+
+def _invoke_with_retry(agent, input_data, agent_name: str, max_retries=API_MAX_RETRIES):
+    """Invoke an agent with retry + exponential backoff for transient API errors.
+
+    Retries on: 504 timeouts, 429 rate limits, 502/503 gateway errors,
+    and connection-level failures from flaky providers.
+    """
+    last_exc = None
+    for attempt in range(1, max_retries + 1):
+        try:
+            return agent.invoke(input_data)
+        except (ValueError, Exception) as exc:
+            exc_str = str(exc)
+            is_transient = any(code in exc_str for code in ("504", "502", "503", "429", "400", "aborted", "timed out", "timeout", "RESOURCE_EXHAUSTED", "tool_use_failed"))
+            if not is_transient or attempt == max_retries:
+                raise
+            delay = API_BASE_DELAY * (2 ** (attempt - 1))
+            logger.warning(
+                "%s agent API error (attempt %d/%d), retrying in %ds: %s",
+                agent_name, attempt, max_retries, delay, exc_str[:200],
+            )
+            last_exc = exc
+            time.sleep(delay)
+    raise last_exc  # should not reach here, but just in case
 
 
 # --- Nodes ---
@@ -35,7 +67,8 @@ def handler_node(state: ContractState):
     bug = state.get("bug_description", "") or error_msg
     local_repo = state.get("workspace_dir", "")
 
-    result = handler_agent.invoke(
+    result = _invoke_with_retry(
+        handler_agent,
         {
             "messages": [
                 {
@@ -46,10 +79,21 @@ def handler_node(state: ContractState):
                     ),
                 }
             ]
-        }
+        },
+        agent_name="Handler",
     )
 
-    response = result["structured_response"]
+    response = result.get("structured_response")
+    if response is None:
+        last_msg = result.get("messages", [])[-1] if result.get("messages") else None
+        logger.error(
+            "Handler agent did not return a structured response. "
+            "Last message: %s", last_msg
+        )
+        raise RuntimeError(
+            "Handler failed to produce a structured analysis. "
+            "The model may not support structured output - check model config."
+        )
     return {
         "relevant_files": response.relevant_files,
     }
@@ -76,11 +120,23 @@ def operative_node(state: ContractState):
 
     briefing = "\n\n".join(briefing_parts)
 
-    result = operative_agent.invoke(
-        {"messages": [{"role": "user", "content": briefing}]}
+    result = _invoke_with_retry(
+        operative_agent,
+        {"messages": [{"role": "user", "content": briefing}]},
+        agent_name="Operative",
     )
 
-    response = result["structured_response"]
+    response = result.get("structured_response")
+    if response is None:
+        last_msg = result.get("messages", [])[-1] if result.get("messages") else None
+        logger.error(
+            "Operative agent did not return a structured response. "
+            "Last message: %s", last_msg
+        )
+        raise RuntimeError(
+            "Operative failed to produce a structured report. "
+            "The model may not support structured output - check model config."
+        )
     return {
         "test_output": response.test_output,
         "is_resolved": response.status == "fixed",

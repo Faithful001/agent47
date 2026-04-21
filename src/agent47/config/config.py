@@ -78,15 +78,13 @@ basic_model = ChatOpenAI(
     temperature=0.5,
     max_tokens=8192,
 )
-
-# Option 2: OpenRouter (best for free + fallback)
-advanced_model = ChatOpenAI(
-    base_url="https://openrouter.ai/api/v1",
-    api_key=os.getenv("OPENROUTER_API_KEY"),
-    model="openrouter/free",                    # auto-selects best free model
-    # or specific: "deepseek/deepseek-r1:free", "meta-llama/llama-3.3-70b-instruct:free"
-    temperature=0.5,
-)
+advanced_model = init_chat_model(
+        model="gemini-2.5-flash",
+        model_provider="google_genai",
+        temperature=0.5,
+        timeout=120,
+        max_tokens=8192
+    )
 
 # basic_model = ThrottledChatModel(init_chat_model(
 #     model="gemini-2.5-flash",
