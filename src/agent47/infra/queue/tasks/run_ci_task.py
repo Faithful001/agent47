@@ -38,28 +38,33 @@ def detect_base_image(build_dir: str) -> str:
 
 def prepare_repo(repo, build, clone_url: str) -> str:
     os.makedirs(REPO_CACHE_ROOT, exist_ok=True)
-    cache_dir = os.path.join(REPO_CACHE_ROOT, str(repo.id))
+    cache_dir = os.path.abspath(os.path.join(REPO_CACHE_ROOT, str(repo.id)))
     branch = build.branch if build else (repo.default_branch or "main")
+
+    def run_cmd(cmd, **kwargs):
+        try:
+            return subprocess.run(cmd, check=True, capture_output=True, **kwargs)
+        except subprocess.CalledProcessError as e:
+            err_msg = e.stderr.decode("utf-8", errors="replace") if e.stderr else str(e)
+            logger.error("Command %s failed: %s", cmd, err_msg)
+            raise RuntimeError(f"Command failed: {err_msg}") from e
 
     lock_file = cache_dir + ".lock"
     with FileLock(lock_file):
         if os.path.exists(os.path.join(cache_dir, ".git")):
             logger.info("Repo %s already cached, pulling branch=%s", repo.full_name, branch)
-            subprocess.run(["git", "fetch", "origin"], cwd=cache_dir, check=True, capture_output=True)
-            subprocess.run(["git", "checkout", branch], cwd=cache_dir, check=True, capture_output=True)
-            subprocess.run(["git", "reset", "--hard", f"origin/{branch}"], cwd=cache_dir, check=True, capture_output=True)
+            run_cmd(["git", "fetch", "origin"], cwd=cache_dir)
+            run_cmd(["git", "checkout", branch], cwd=cache_dir)
+            run_cmd(["git", "reset", "--hard", f"origin/{branch}"], cwd=cache_dir)
         else:
             logger.info("Shallow-cloning repo %s (branch=%s) to %s", repo.full_name, branch, cache_dir)
             os.makedirs(cache_dir, exist_ok=True)
-            subprocess.run(
-                ["git", "clone", "--depth", "1", "--branch", branch, clone_url, cache_dir],
-                check=True, capture_output=True,
-            )
+            run_cmd(["git", "clone", "--depth", "1", "--branch", branch, clone_url, cache_dir])
 
         if build and build.commit_sha:
             logger.info("Fetching specific commit %s", build.commit_sha)
-            subprocess.run(["git", "fetch", "--depth", "1", "origin", build.commit_sha], cwd=cache_dir, check=True, capture_output=True)
-            subprocess.run(["git", "checkout", build.commit_sha], cwd=cache_dir, check=True, capture_output=True)
+            run_cmd(["git", "fetch", "--depth", "1", "origin", build.commit_sha], cwd=cache_dir)
+            run_cmd(["git", "checkout", build.commit_sha], cwd=cache_dir)
 
     build_dir = cache_dir
     if repo.root_directory:
