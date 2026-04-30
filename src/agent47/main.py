@@ -45,10 +45,9 @@ app = FastAPI(
 
 webhook_url = os.getenv("WEBHOOK_CALLBACK_URL").replace("/webhooks/github", "")
 
-# CORS — allow the React frontend to call the API
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", webhook_url],
+    allow_origins=["http://localhost:3000", webhook_url, "http://agent47-client.localhost"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -86,4 +85,4 @@ if __name__ == "__main__":
     logger.info(f"Operative model: {advanced_model_name}")
     
     import uvicorn
-    uvicorn.run("agent47.main:app", host="127.0.0.1", port=8000, reload=True)
+    uvicorn.run("agent47.main:app", host="127.0.0.1", port=9000, reload=True)

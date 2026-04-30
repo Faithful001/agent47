@@ -10,31 +10,14 @@ from agent47.domain.contract.service import ContractService
 from agent47.domain.repository.model import Repository
 from agent47.domain.build.model import Build
 from agent47.infra.queue import celery
+from agent47.utils.docker_utils import detect_base_image
 
 logger = logging.getLogger(__name__)
 
 REPO_CACHE_ROOT = os.environ.get("REPO_CACHE_ROOT", "/tmp/repo_cache")
 
 
-def detect_base_image(build_dir: str) -> str:
-    """Detect the appropriate base Docker image based on repo contents."""
-    files = os.listdir(build_dir)
 
-    if "package.json" in files:
-        return "node:20-slim"
-    if "requirements.txt" in files or "pyproject.toml" in files or "Pipfile" in files:
-        return "python:3.12-slim"
-    if "go.mod" in files:
-        return "golang:1.22-slim"
-    if "pom.xml" in files or "build.gradle" in files:
-        return "eclipse-temurin:21-jdk-slim"
-    if "Gemfile" in files:
-        return "ruby:3.3-slim"
-    if "composer.json" in files:
-        return "php:8.3-cli"
-
-    logger.warning("Could not detect tech stack, falling back to ubuntu:22.04")
-    return "ubuntu:22.04"
 
 def prepare_repo(repo, build, clone_url: str) -> str:
     os.makedirs(REPO_CACHE_ROOT, exist_ok=True)
@@ -72,11 +55,83 @@ def prepare_repo(repo, build, clone_url: str) -> str:
 
     return build_dir
 
+NOISE_PATTERNS = {
+    "node": [
+        "npm notice", "npm warn", "vulnerability", "vulnerabilities",
+        "funding", "npm fund", "audit", "packages are looking",
+        "To address", "Run `npm", "New major version",
+    ],
+    "python": [
+        "WARNING::", "DeprecationWarning", "PendingDeprecationWarning",
+        "UserWarning", "pip is configured", "Requirement already satisfied",
+    ],
+    "go": [
+        "go: downloading", "go: finding",
+    ],
+    "java": [
+        "WARNING:", "Download from", "Downloading from",
+        "Downloaded from", "Progress",
+    ],
+    "ruby": [
+        "Fetching gem", "Installing gem", "Gem::", "Successfully installed",
+    ],
+    "php": [
+        "Loading composer", "Updating dependencies", "Package operations",
+    ],
+}
+
+ERROR_KEYWORDS = [
+    "error", "Error", "ERROR",
+    "failed", "Failed", "FAILED",
+    "exception", "Exception", "EXCEPTION",
+    "fatal", "Fatal", "FATAL",
+    "traceback", "Traceback",
+    "undefined", "cannot", "Cannot",
+    "SyntaxError", "TypeError", "ValueError",
+    "ImportError", "ModuleNotFoundError",
+]
+
+def extract_relevant_errors(logs: str, build_dir: str) -> str:
+    from agent47.utils.docker_utils import detect_base_image
+    
+    base_image = detect_base_image(build_dir)
+    
+    # Map image to noise key
+    noise_key = None
+    if "node" in base_image:
+        noise_key = "node"
+    elif "python" in base_image:
+        noise_key = "python"
+    elif "golang" in base_image:
+        noise_key = "go"
+    elif "temurin" in base_image or "jdk" in base_image:
+        noise_key = "java"
+    elif "ruby" in base_image:
+        noise_key = "ruby"
+    elif "php" in base_image:
+        noise_key = "php"
+    
+    noise = NOISE_PATTERNS.get(noise_key, []) if noise_key else []
+    
+    lines = logs.splitlines()
+    relevant = [
+        line for line in lines
+        if any(kw in line for kw in ERROR_KEYWORDS)
+        and not any(n in line for n in noise)
+    ]
+    
+    if not relevant:
+        relevant = lines[-20:]
+    
+    return "\n".join(relevant).strip()
+
 
 @celery.task(name="run_ci_task")
 def run_ci_task(build_id: str, repo_id: str):
     logger.info("Starting custom CI pipeline for build %s", build_id)
     db = SessionLocal()
+    railpack_image_name = None  # track railpack-built images for cleanup
+
     try:
         build = db.query(Build).filter(Build.id == build_id).first()
         repo = db.query(Repository).filter(Repository.id == repo_id).first()
@@ -112,8 +167,43 @@ def run_ci_task(build_id: str, repo_id: str):
         client = docker.from_env(timeout=900)
 
         build_dir = prepare_repo(repo, build, clone_url)
-        base_image = detect_base_image(build_dir)
-        logger.info("Detected base image: %s for repo %s", base_image, repo.full_name)
+
+        candidate_image_name = f"ci_image_{build_id}"
+        logger.info("Building base image with Railpack: %s from %s", candidate_image_name, build_dir)
+
+        try:
+            # subprocess.run(
+            #     ["railpack", "build", "--name", candidate_image_name, build_dir],
+            #     check=True,
+            #     capture_output=True,
+            #     text=True,
+            # )
+
+            base_image = detect_base_image(build_dir)
+            try:
+                client.images.get(candidate_image_name)
+                base_image = candidate_image_name
+                railpack_image_name = candidate_image_name  # mark for post-run cleanup
+                logger.info("Railpack image verified in Docker daemon: %s", base_image)
+            except docker.errors.ImageNotFound:
+                logger.warning(
+                    "Railpack reported success but image '%s' not found in Docker daemon. "
+                    "Falling back to heuristic detection.",
+                    candidate_image_name,
+                )
+                base_image = detect_base_image(build_dir)
+                logger.info("Fallback base image detected: %s", base_image)
+
+        except subprocess.CalledProcessError as e:
+            logger.warning("Railpack build failed: %s. Falling back to heuristic detection.", e.stderr)
+            base_image = detect_base_image(build_dir)
+            logger.info("Fallback base image detected: %s", base_image)
+        except FileNotFoundError:
+            logger.warning("Railpack CLI not found. Falling back to heuristic detection.")
+            base_image = detect_base_image(build_dir)
+            logger.info("Fallback base image detected: %s", base_image)
+
+        logger.info("Base image resolved: %s", base_image)
 
         script = f"""
         cd /app
@@ -121,6 +211,8 @@ def run_ci_task(build_id: str, repo_id: str):
         {build_cmd}
         {test_cmd}
         """
+
+        ci_error: Exception | None = None
 
         try:
             container = client.containers.run(
@@ -141,6 +233,8 @@ def run_ci_task(build_id: str, repo_id: str):
                         break
                     time.sleep(5)
                 else:
+                    # Timed out — treat identically to a non-zero exit so the
+                    # failure pipeline fires instead of silently swallowing the error.
                     raise TimeoutError(
                         f"Container did not finish within 900s for build {build_id}"
                     )
@@ -151,8 +245,11 @@ def run_ci_task(build_id: str, repo_id: str):
                     raise docker.errors.ContainerError(
                         container, exit_code, script, base_image, logs.encode()
                     )
+
                 logger.info("CI pipeline succeeded for %s", build.commit_sha)
-            except Exception:
+
+            except Exception as exc:
+                ci_error = exc
                 try:
                     container.kill()
                 except Exception:
@@ -161,16 +258,22 @@ def run_ci_task(build_id: str, repo_id: str):
             finally:
                 container.remove(force=True)
 
-        except docker.errors.ContainerError as e:
-            logger.warning("CI pipeline FAILED for %s", build.commit_sha)
-            error_logs = e.stderr.decode('utf-8') if e.stderr else str(e)
+        except (docker.errors.ContainerError, TimeoutError) as exc:
+            # Both a non-zero exit and a timeout should trigger the fix pipeline.
+            logger.warning("CI pipeline FAILED for %s: %s", build.commit_sha, exc)
+
+            if isinstance(exc, TimeoutError):
+                error_logs = str(exc)
+            else:
+                error_logs = exc.stderr.decode("utf-8") if exc.stderr else str(exc)
 
             contract_svc = ContractService(db)
             contract = contract_svc.create_contract(
                 repo_id=repo.full_name,
                 user_id=repo.user_id,
                 trigger_event="push_ci_failure",
-                error_message=f"Custom CI failed:\n{error_logs[-2000:]}",
+                # error_message=f"Custom CI failed:\n{error_logs[-2000:]}",
+                error_message=f"Custom CI failed:\n{extract_relevant_errors(error_logs, build_dir)}",
                 source_branch=build.branch,
                 commit_sha=build.commit_sha,
                 pr_number=None,
@@ -186,4 +289,12 @@ def run_ci_task(build_id: str, repo_id: str):
     except Exception:
         logger.exception("run_ci_task failed completely for build %s", build_id)
     finally:
+        # Remove the Railpack-built image from the daemon after the run.
+        # Heuristic fallback images (node:20-slim etc.) are shared, so leave those alone.
+        if railpack_image_name:
+            try:
+                client.images.remove(railpack_image_name, force=True)
+                logger.info("Removed Railpack image %s", railpack_image_name)
+            except Exception as e:
+                logger.warning("Could not remove Railpack image %s: %s", railpack_image_name, e)
         db.close()

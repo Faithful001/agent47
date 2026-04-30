@@ -21,6 +21,9 @@ class ContractState(TypedDict):
     # The repo path to operate on (inside the sandbox)
     repo_path: str
 
+    # The railpack image name
+    railpack_image_name: str | None
+
     # Full repo name on GitHub (e.g. "owner/repo")
     repo_full_name: str
 

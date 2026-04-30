@@ -16,7 +16,6 @@ from langchain_community.cache import SQLiteCache
 from langchain_openai import ChatOpenAI
 
 # --- LLM Caching ---
-# Prevents redundant API calls by storing responses in a local SQLite DB.
 cache_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))), "data", "llm_cache.db")
 os.makedirs(os.path.dirname(cache_path), exist_ok=True)
 set_llm_cache(SQLiteCache(database_path=cache_path))
@@ -27,15 +26,20 @@ class ThrottledChatModel:
     _last_call_time = 0
     _lock = threading.Lock()
     _min_delay = 8.0  # Seconds (Safe for 5 RPM limit)
+    _request_count = 0  # Track total LLM requests
 
     def __init__(self, model):
         self.model = model
 
     def invoke(self, *args, **kwargs):
         with self._lock:
+            self.__class__._request_count += 1
+            print(f"[ThrottledChatModel] Initiating LLM Request #{self.__class__._request_count}")
+            
             elapsed = time.time() - self._last_call_time
             if elapsed < self._min_delay:
                 wait_time = self._min_delay - elapsed
+                print(f"[ThrottledChatModel] Rate limiting: waiting {wait_time:.2f}s before sending request...")
                 time.sleep(wait_time)
             
             result = self.model.invoke(*args, **kwargs)
@@ -70,36 +74,20 @@ FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
 
 # In config.py
 
-# Option 1: Groq (very fast)
 basic_model = ChatOpenAI(
-        base_url="https://api.groq.com/openai/v1",
-        api_key=os.getenv("GROQ_API_KEY"),
-        model="llama-3.3-70b-versatile",   # or "qwen3-72b" etc.
-        temperature=0.5,
-        max_tokens=8192,
-    )
-advanced_model = init_chat_model(
-        model="gemini-2.5-flash",
-        model_provider="google_genai",
-        temperature=0.5,
-        timeout=120,
-        max_tokens=8192
-    )
+    base_url="https://api.groq.com/openai/v1",
+    api_key=os.getenv("GROQ_API_KEY"),
+    model="meta-llama/llama-4-scout-17b-16e-instruct",
+    temperature=0.5,
+    max_tokens=8192,
+)
 
-# basic_model = ThrottledChatModel(init_chat_model(
-#     model="gemini-2.5-flash",
-#     model_provider="google_genai",
-#     temperature=0.5,
-#     timeout=60,
-#     max_tokens=8192
-# ))
+advanced_model = ChatOpenAI(
+    base_url="https://api.groq.com/openai/v1",
+    api_key=os.getenv("GROQ_API_KEY"),
+    model="llama-3.3-70b-versatile",
+    temperature=0.5,
+    max_tokens=8192,
+)
 
-# advanced_model = ThrottledChatModel(init_chat_model(
-#     model="gemini-2.5-flash",
-#     model_provider="google_genai",
-#     temperature=0.5,
-#     timeout=120,
-#     max_tokens=8192
-# ))
-
-ENCRYPTION_KEY = os.getenv("ENCRYPTION_KEY", "uE_jK_d-zU2-nQqzYgV06b9N3m-B5QO__6rC_oXl1h0=")
+ENCRYPTION_KEY = os.getenv("ENCRYPTION_KEY")

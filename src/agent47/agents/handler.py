@@ -11,6 +11,7 @@ from langchain.agents import create_agent
 from langchain.tools import tool
 from langchain.agents.structured_output import ToolStrategy
 from langgraph.checkpoint.memory import InMemorySaver
+from langgraph.prebuilt import create_react_agent
 
 from agent47.config.config import basic_model
 
@@ -78,12 +79,10 @@ Be precise. Agent 47 does not tolerate sloppy intel."""
 
 # --- Agent Definition ---
 
-checkpointer = InMemorySaver()
 
-handler_agent = create_agent(
+handler_agent = create_react_agent(
     model=basic_model,
-    system_prompt=HANDLER_SYSTEM_PROMPT,
     tools=[list_repo_files, read_file],
-    response_format=ToolStrategy(HandlerResponse),
-    checkpointer=checkpointer
+    prompt=HANDLER_SYSTEM_PROMPT,
+    response_format=HandlerResponse,
 )

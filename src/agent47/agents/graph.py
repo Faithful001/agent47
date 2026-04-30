@@ -5,6 +5,7 @@ with sandbox setup and PR creation nodes.
 
 import logging
 import time
+import os
 
 from langgraph.graph import StateGraph, END
 
@@ -12,6 +13,7 @@ from agent47.state import ContractState
 from agent47.agents.handler import handler_agent
 from agent47.agents.operative import operative_agent
 from agent47.sandbox.tools import sandbox
+from agent47.utils.docker_utils import detect_base_image
 
 logger = logging.getLogger(__name__)
 
@@ -22,18 +24,16 @@ API_BASE_DELAY = 10  # seconds
 
 
 def _invoke_with_retry(agent, input_data, agent_name: str, max_retries=API_MAX_RETRIES):
-    """Invoke an agent with retry + exponential backoff for transient API errors.
-
-    Retries on: 504 timeouts, 429 rate limits, 502/503 gateway errors,
-    and connection-level failures from flaky providers.
-    """
     last_exc = None
     for attempt in range(1, max_retries + 1):
         try:
             return agent.invoke(input_data)
         except (ValueError, Exception) as exc:
             exc_str = str(exc)
-            is_transient = any(code in exc_str for code in ("504", "502", "503", "429", "400", "aborted", "timed out", "timeout", "RESOURCE_EXHAUSTED", "tool_use_failed"))
+            is_transient = any(code in exc_str for code in (
+                "504", "502", "503", "aborted", "timed out", "timeout",
+                "RESOURCE_EXHAUSTED", "tool_use_failed"
+            ))
             if not is_transient or attempt == max_retries:
                 raise
             delay = API_BASE_DELAY * (2 ** (attempt - 1))
@@ -43,22 +43,54 @@ def _invoke_with_retry(agent, input_data, agent_name: str, max_retries=API_MAX_R
             )
             last_exc = exc
             time.sleep(delay)
-    raise last_exc  # should not reach here, but just in case
+    raise last_exc
 
 
 # --- Nodes ---
 
 def setup_sandbox_node(state: ContractState):
-    """Start the Docker sandbox and copy the cloned repo into it."""
     workspace = state.get("workspace_dir", "")
+
+    import subprocess
+    import time
+    import uuid
+
+    railpack_image_name = None
+
+    if workspace:
+        abs_workspace = os.path.abspath(workspace)
+        # Use uuid, not timestamp — timestamp collides if two runs start in the same second
+        image_name = f"sandbox_img_{uuid.uuid4().hex}"
+        logger.info("Building sandbox image with Railpack: %s from %s", image_name, abs_workspace)
+        try:
+            # subprocess.run(
+            #     ["railpack", "build", "--name", image_name, abs_workspace],
+            #     check=True,
+            #     capture_output=True,
+            #     text=True,
+            # )
+            # sandbox.image = image_name
+            # railpack_image_name = image_name
+             
+            sandbox.image = detect_base_image(abs_workspace)
+            railpack_image_name = None 
+        except subprocess.CalledProcessError as e:
+            logger.warning("Railpack build failed: %s. Falling back to heuristic detection.", e.stderr)
+            sandbox.image = detect_base_image(abs_workspace)
+        except FileNotFoundError:
+            logger.warning("Railpack CLI not found. Falling back to heuristic detection.")
+            sandbox.image = detect_base_image(abs_workspace)
+    else:
+        sandbox.image = "ubuntu:22.04"
 
     sandbox.start()
 
     if workspace:
         sandbox.execute_command("mkdir -p /workspace")
-        sandbox.copy_repo_to_container(workspace, "/workspace")
+        sandbox.copy_repo_to_container(abs_workspace, "/workspace")
 
-    return {"repo_path": "/workspace"}
+    # Pass the image name through state so teardown can clean it up
+    return {"repo_path": "/workspace", "railpack_image_name": railpack_image_name}
 
 
 def handler_node(state: ContractState):
@@ -159,6 +191,17 @@ def sync_from_sandbox_node(state: ContractState):
 def teardown_sandbox_node(state: ContractState):
     """Stop and clean up the Docker sandbox."""
     sandbox.stop()
+
+    railpack_image_name = state.get("railpack_image_name")
+    if railpack_image_name:
+        try:
+            import docker
+            client = docker.from_env()
+            client.images.remove(railpack_image_name, force=True)
+            logger.info("Removed Railpack sandbox image %s", railpack_image_name)
+        except Exception as e:
+            logger.warning("Could not remove Railpack sandbox image %s: %s", railpack_image_name, e)
+
     return {}
 
 

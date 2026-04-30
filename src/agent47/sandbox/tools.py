@@ -52,3 +52,21 @@ def modify_sandbox_file(filepath: str, content: str) -> str:
         return sandbox.write_file_in_container(filepath, content)
     except RuntimeError as exc:
         return f"Sandbox error: {exc}"
+
+@tool
+def replace_in_sandbox_file(filepath: str, old_content: str, new_content: str) -> str:
+    """Replace a specific string in a file in the Docker sandbox.
+
+    Use this instead of modify_sandbox_file when making small, targeted fixes.
+    Provide the EXACT string to find (old_content) and what to replace it with (new_content).
+    The replacement is literal — it will fail if old_content is not found exactly.
+    Always use absolute paths inside the container.
+    """
+    try:
+        current = sandbox.read_file_from_container(filepath)
+        if old_content not in current:
+            return f"Error: Could not find the target string in {filepath}. Read the file first and verify the exact content."
+        updated = current.replace(old_content, new_content, 1)
+        return sandbox.write_file_in_container(filepath, updated)
+    except RuntimeError as exc:
+        return f"Sandbox error: {exc}"

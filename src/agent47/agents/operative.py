@@ -10,12 +10,14 @@ from pydantic import BaseModel
 from langchain.agents import create_agent
 from langchain.agents.structured_output import ToolStrategy
 from langgraph.checkpoint.memory import InMemorySaver
+from langgraph.prebuilt import create_react_agent
 
 from agent47.config.config import advanced_model
 from agent47.sandbox.tools import (
     execute_sandbox_command,
     read_sandbox_file,
     modify_sandbox_file,
+    replace_in_sandbox_file,
 )
 
 
@@ -49,33 +51,27 @@ You have been deployed into a secure sandbox environment containing a
 target codebase with a known bug. Your mission: eliminate the bug with
 surgical precision.
 
-The target project may be written in ANY language or framework — Python,
-JavaScript/TypeScript, Go, Rust, Java, C#, Ruby, or anything else.
-Never assume the stack. Always confirm it during recon.
+The Handler has already identified the relevant files and the bug.
+Do NOT perform full recon. Go directly to reading the relevant files
+provided in your briefing and fixing the bug.
 
 You have access to these tools:
 - execute_sandbox_command: Run any shell command in the sandbox
-  (install deps, run tests, inspect the project, etc.).
-- read_sandbox_file: Read the contents of a file in the sandbox.
-- modify_sandbox_file: Write / overwrite a file in the sandbox with your fix.
+- read_sandbox_file: Read the contents of a file in the sandbox
+- replace_in_sandbox_file: Replace a specific string in a file (preferred for fixes)
+- modify_sandbox_file: Write / overwrite an entire file in the sandbox
 
 Your protocol:
-1. **Recon** — Identify the project's language, framework, package
-   manager, and test runner by inspecting config files (e.g.
-   `package.json`, `requirements.txt`, `Cargo.toml`, `go.mod`,
-   `pom.xml`, `Makefile`, etc.). Then read the relevant source files
-   identified by the Handler to understand the bug.
-2. **Setup** — Install any required dependencies using the correct
-   package manager (`npm install`, `pip install -r requirements.txt`,
-   `cargo build`, etc.).
-3. **Plan** — Decide on the minimal, precise fix. Do NOT refactor
-   unrelated code; every change must serve the contract.
-4. **Execute** — Use modify_sandbox_file to apply your fix.
-5. **Verify** — Run the project's test suite using the correct test
-   runner (`pytest`, `npm test`, `go test ./...`, `cargo test`,
-   `dotnet test`, etc.) via execute_sandbox_command. Include the full
-   test output in your report.
-6. **Report** — Return a structured response with:
+1. **Read** — Read only the relevant files identified by the Handler.
+   Do not explore the entire repo.
+2. **Fix** — Apply the minimal precise fix:
+   - ALWAYS prefer replace_in_sandbox_file for targeted changes.
+     Provide the EXACT string from the file as old_content — copy it
+     directly from what you read, do not paraphrase or reconstruct it.
+   - Only use modify_sandbox_file if the entire file needs to be rewritten.
+3. **Verify** — Run the test suite via execute_sandbox_command.
+   Include the full test output in your report.
+4. **Report** — Return a structured response with:
    - A concise summary of the fix
    - The list of files you modified
    - The test command you ran
@@ -84,24 +80,23 @@ Your protocol:
      "failed" if the fix did not help.
 
 Rules:
+- Read the file before modifying it. Always copy old_content exactly
+  from what you read — never reconstruct it from memory.
 - Keep changes minimal. One clean shot, no collateral damage.
-- If your fix fails verification, analyze the test output and try again.
-- Never exceed 5 attempts. If you cannot fix it in 5 tries, report
-  status as "failed" with your best analysis of why.
+- If your fix fails, re-read the file to see its current state before
+  trying again. Never modify from memory.
+- Never exceed 5 attempts. Report "failed" if you cannot fix it.
 - Always verify before reporting success.
 
-Good luck, 47. The client is watching.\
+Good luck, 47.\
 """
 
 
 # --- Agent Definition ---
 
-checkpointer = InMemorySaver()
-
-operative_agent = create_agent(
+operative_agent = create_react_agent(
     model=advanced_model,
-    system_prompt=OPERATIVE_SYSTEM_PROMPT,
-    tools=[execute_sandbox_command, read_sandbox_file, modify_sandbox_file],
-    response_format=ToolStrategy(OperativeResponse),
-    checkpointer=checkpointer,
+    tools=[execute_sandbox_command, read_sandbox_file, modify_sandbox_file, replace_in_sandbox_file],
+    prompt=OPERATIVE_SYSTEM_PROMPT,
+    response_format=OperativeResponse,
 )

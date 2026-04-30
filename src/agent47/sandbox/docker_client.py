@@ -3,9 +3,10 @@ import os
 import tarfile
 import io
 import time
+import stat
 
 class Sandbox:
-    def __init__(self, image="ubuntu:22.04"):
+    def __init__(self, image: str = None):
         self._client = None
         self.image = image
         self.container = None
@@ -27,12 +28,6 @@ class Sandbox:
             command="tail -f /dev/null"  # Keep container alive
         )
 
-        # Install common language runtimes and tools so the
-        # Operative can work with any project type.
-        self.execute_command(
-            "apt-get update && apt-get install -y --no-install-recommends "
-            "python3 python3-pip nodejs npm git curl build-essential"
-        )
         return self.container.id
 
     def stop(self):
@@ -117,6 +112,15 @@ class Sandbox:
                 elif member.name == prefix.rstrip("/"):
                     continue  # skip the root directory entry itself
                 if member.name:  # skip empty names
+                    # Skip .git directory to avoid permission issues and redundant syncing
+                    if member.name.startswith(".git") or "/.git" in member.name:
+                        continue
+                    
+                    # Ensure destination is writable if it exists (fixes PermissionError on Windows)
+                    dest_path = os.path.join(local_dir, member.name)
+                    if os.path.exists(dest_path):
+                        os.chmod(dest_path, stat.S_IWRITE)
+                    
                     tar.extract(member, local_dir)
 
     def read_file_from_container(self, filepath: str) -> str:
