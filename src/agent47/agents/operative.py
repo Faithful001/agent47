@@ -7,9 +7,6 @@ Docker sandbox — looping until the contract is fulfilled.
 from typing import Literal
 
 from pydantic import BaseModel
-from langchain.agents import create_agent
-from langchain.agents.structured_output import ToolStrategy
-from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.prebuilt import create_react_agent
 
 from agent47.config.config import advanced_model
@@ -25,21 +22,11 @@ from agent47.sandbox.tools import (
 
 class OperativeResponse(BaseModel):
     """The Operative's structured report after attempting a fix."""
-
     fix_summary: str
-    """A concise description of what was changed and why."""
-
     files_modified: list[str]
-    """List of file paths that were modified in the sandbox."""
-
     test_command: str
-    """The shell command used to verify the fix (e.g. `pytest`)."""
-
     test_output: str
-    """The raw output from running the test command."""
-
     status: Literal["fixed", "partial", "failed"]
-    """Whether the fix resolved the issue, partially helped, or failed."""
 
 
 # --- System Prompt ---
@@ -71,13 +58,15 @@ Your protocol:
    - Only use modify_sandbox_file if the entire file needs to be rewritten.
 3. **Verify** — Run the test suite via execute_sandbox_command.
    Include the full test output in your report.
-4. **Report** — Return a structured response with:
-   - A concise summary of the fix
-   - The list of files you modified
-   - The test command you ran
-   - The raw test output
-   - The status: "fixed" if all tests pass, "partial" if some pass,
-     "failed" if the fix did not help.
+4. **Report** — When you are done, output your final answer as a raw JSON object
+   with exactly these fields (no markdown, no code fences, just JSON):
+   {
+     "fix_summary": "concise description of what was changed and why",
+     "files_modified": ["list", "of", "file", "paths"],
+     "test_command": "the command you ran",
+     "test_output": "the raw output from the test command",
+     "status": "fixed" | "partial" | "failed"
+   }
 
 Rules:
 - Read the file before modifying it. Always copy old_content exactly
@@ -85,7 +74,7 @@ Rules:
 - Keep changes minimal. One clean shot, no collateral damage.
 - If your fix fails, re-read the file to see its current state before
   trying again. Never modify from memory.
-- Never exceed 5 attempts. Report "failed" if you cannot fix it.
+- Never exceed 5 attempts. Report failed if you cannot fix it.
 - Always verify before reporting success.
 
 Good luck, 47.\
@@ -98,5 +87,4 @@ operative_agent = create_react_agent(
     model=advanced_model,
     tools=[execute_sandbox_command, read_sandbox_file, modify_sandbox_file, replace_in_sandbox_file],
     prompt=OPERATIVE_SYSTEM_PROMPT,
-    response_format=OperativeResponse,
 )

@@ -3,6 +3,7 @@ LangGraph workflow that connects the Handler and Operative agents,
 with sandbox setup and PR creation nodes.
 """
 
+import json
 import logging
 import time
 import os
@@ -10,8 +11,8 @@ import os
 from langgraph.graph import StateGraph, END
 
 from agent47.state import ContractState
-from agent47.agents.handler import handler_agent
-from agent47.agents.operative import operative_agent
+from agent47.agents.handler import handler_agent, HandlerResponse
+from agent47.agents.operative import operative_agent, OperativeResponse
 from agent47.sandbox.tools import sandbox
 from agent47.utils.docker_utils import detect_base_image
 
@@ -31,8 +32,10 @@ def _invoke_with_retry(agent, input_data, agent_name: str, max_retries=API_MAX_R
         except (ValueError, Exception) as exc:
             exc_str = str(exc)
             is_transient = any(code in exc_str for code in (
-                "504", "502", "503", "aborted", "timed out", "timeout",
-                "RESOURCE_EXHAUSTED", "tool_use_failed"
+                "504", "502", "503", "429", "rate_limit",
+                "aborted", "timed out", "timeout",
+                "tool_use_failed",
+                "RESOURCE_EXHAUSTED",
             ))
             if not is_transient or attempt == max_retries:
                 raise
@@ -46,34 +49,50 @@ def _invoke_with_retry(agent, input_data, agent_name: str, max_retries=API_MAX_R
     raise last_exc
 
 
+def _parse_json_response(content: str, model_class, agent_name: str):
+    """Extract and parse a JSON object from a model's final message content."""
+    clean = content.strip()
+
+    # Strip markdown code fences if present
+    if clean.startswith("```"):
+        lines = clean.split("\n")
+        # Remove opening fence (```json or ```)
+        lines = lines[1:]
+        # Remove closing fence
+        if lines and lines[-1].strip().startswith("```"):
+            lines = lines[:-1]
+        clean = "\n".join(lines).strip()
+
+    try:
+        parsed = json.loads(clean)
+        return model_class(**parsed)
+    except Exception as e:
+        logger.error(
+            "%s failed to parse structured response: %s\nRaw content: %s",
+            agent_name, e, content,
+        )
+        raise RuntimeError(
+            f"{agent_name} failed to produce a valid structured response: {e}"
+        )
+
+
 # --- Nodes ---
 
 def setup_sandbox_node(state: ContractState):
     workspace = state.get("workspace_dir", "")
 
     import subprocess
-    import time
     import uuid
 
     railpack_image_name = None
 
     if workspace:
         abs_workspace = os.path.abspath(workspace)
-        # Use uuid, not timestamp — timestamp collides if two runs start in the same second
         image_name = f"sandbox_img_{uuid.uuid4().hex}"
         logger.info("Building sandbox image with Railpack: %s from %s", image_name, abs_workspace)
         try:
-            # subprocess.run(
-            #     ["railpack", "build", "--name", image_name, abs_workspace],
-            #     check=True,
-            #     capture_output=True,
-            #     text=True,
-            # )
-            # sandbox.image = image_name
-            # railpack_image_name = image_name
-             
             sandbox.image = detect_base_image(abs_workspace)
-            railpack_image_name = None 
+            railpack_image_name = None
         except subprocess.CalledProcessError as e:
             logger.warning("Railpack build failed: %s. Falling back to heuristic detection.", e.stderr)
             sandbox.image = detect_base_image(abs_workspace)
@@ -89,46 +108,22 @@ def setup_sandbox_node(state: ContractState):
         sandbox.execute_command("mkdir -p /workspace")
         sandbox.copy_repo_to_container(abs_workspace, "/workspace")
 
-    # Pass the image name through state so teardown can clean it up
     return {"repo_path": "/workspace", "railpack_image_name": railpack_image_name}
 
 
 def handler_node(state: ContractState):
-    """The Handler analyses the bug report and identifies relevant files."""
     error_msg = state.get("error_message", "")
     bug = state.get("bug_description", "") or error_msg
     local_repo = state.get("workspace_dir", "")
 
-    result = _invoke_with_retry(
-        handler_agent,
-        {
-            "messages": [
-                {
-                    "role": "user",
-                    "content": (
-                        f"Analyze this bug in repo at {local_repo}: {bug}\n"
-                        f"Note: Use absolute paths when calling read_file by joining the repo path with the relative paths."
-                    ),
-                }
-            ]
-        },
-        agent_name="Handler",
+    response = handler_agent(repo_path=local_repo, bug=bug)
+
+    logger.info(
+        "Handler identified %d relevant files: %s",
+        len(response.relevant_files), response.relevant_files,
     )
 
-    response = result.get("structured_response")
-    if response is None:
-        last_msg = result.get("messages", [])[-1] if result.get("messages") else None
-        logger.error(
-            "Handler agent did not return a structured response. "
-            "Last message: %s", last_msg
-        )
-        raise RuntimeError(
-            "Handler failed to produce a structured analysis. "
-            "The model may not support structured output - check model config."
-        )
-    return {
-        "relevant_files": response.relevant_files,
-    }
+    return {"relevant_files": response.relevant_files}
 
 
 def operative_node(state: ContractState):
@@ -142,12 +137,14 @@ def operative_node(state: ContractState):
     briefing_parts = [
         f"## Contract (Attempt {attempt}/{MAX_ATTEMPTS})",
         f"**Bug:** {bug}",
-        f"**Relevant files:** {', '.join(relevant_files)}",
+        f"**Relevant files (in the sandbox at /workspace):** {', '.join(relevant_files)}",
+        f"**Working directory:** Always run commands from /workspace. Example: `cd /workspace && npm run build`",
+        f"**Important:** Read the relevant files FIRST before attempting any fix. Do not guess — find the exact syntax error in the file.",
     ]
     if previous_output:
+        previous_output = previous_output[-500:]  # trim to avoid token bloat
         briefing_parts.append(
-            f"**Previous test output (fix failed):**\n```\n"
-            f"{previous_output}\n```"
+            f"**Previous test output (fix failed):**\n```\n{previous_output}\n```"
         )
 
     briefing = "\n\n".join(briefing_parts)
@@ -158,17 +155,21 @@ def operative_node(state: ContractState):
         agent_name="Operative",
     )
 
-    response = result.get("structured_response")
-    if response is None:
-        last_msg = result.get("messages", [])[-1] if result.get("messages") else None
-        logger.error(
-            "Operative agent did not return a structured response. "
-            "Last message: %s", last_msg
-        )
-        raise RuntimeError(
-            "Operative failed to produce a structured report. "
-            "The model may not support structured output - check model config."
-        )
+    messages = result.get("messages", [])
+    if not messages:
+        raise RuntimeError("Operative returned no messages")
+
+    last_message = messages[-1]
+    content = last_message.content if hasattr(last_message, "content") else str(last_message)
+
+    logger.info("Operative last message: %s", content[:500])
+
+    response = _parse_json_response(content, OperativeResponse, "Operative")
+
+    logger.info(
+        "Operative attempt %d/%d — status: %s", attempt, MAX_ATTEMPTS, response.status
+    )
+
     return {
         "test_output": response.test_output,
         "is_resolved": response.status == "fixed",
@@ -177,11 +178,7 @@ def operative_node(state: ContractState):
 
 
 def sync_from_sandbox_node(state: ContractState):
-    """Copy modified files from sandbox back to the local workspace.
-
-    This MUST run before teardown so the local clone reflects
-    whatever the Operative changed inside the container.
-    """
+    """Copy modified files from sandbox back to the local workspace."""
     workspace = state.get("workspace_dir", "")
     if workspace and state.get("is_resolved"):
         sandbox.copy_repo_from_container("/workspace", workspace)
@@ -200,7 +197,9 @@ def teardown_sandbox_node(state: ContractState):
             client.images.remove(railpack_image_name, force=True)
             logger.info("Removed Railpack sandbox image %s", railpack_image_name)
         except Exception as e:
-            logger.warning("Could not remove Railpack sandbox image %s: %s", railpack_image_name, e)
+            logger.warning(
+                "Could not remove Railpack sandbox image %s: %s", railpack_image_name, e
+            )
 
     return {}
 

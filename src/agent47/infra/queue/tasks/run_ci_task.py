@@ -228,7 +228,22 @@ def run_ci_task(build_id: str, repo_id: str):
             try:
                 deadline = time.time() + 900
                 while time.time() < deadline:
-                    container.reload()
+                    try:
+                        container.reload()
+                    except docker.errors.APIError as reload_err:
+                        logger.warning(
+                            "Docker API error during container.reload() for build %s: %s. "
+                            "Treating as container failure.",
+                            build_id, reload_err,
+                        )
+                        # Container is gone or Docker daemon errored — get whatever logs we can
+                        try:
+                            logs = container.logs(stderr=True).decode("utf-8")
+                        except Exception:
+                            logs = f"Container lost during execution: {reload_err}"
+                        raise docker.errors.ContainerError(
+                            container, 1, script, base_image, logs.encode()
+                        ) from reload_err
                     if container.status in ("exited", "dead"):
                         break
                     time.sleep(5)

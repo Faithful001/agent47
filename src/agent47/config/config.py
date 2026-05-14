@@ -14,6 +14,7 @@ from langchain.chat_models import init_chat_model
 from langchain_core.globals import set_llm_cache
 from langchain_community.cache import SQLiteCache
 from langchain_openai import ChatOpenAI
+from langchain_core.rate_limiters import InMemoryRateLimiter
 
 # --- LLM Caching ---
 cache_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))), "data", "llm_cache.db")
@@ -72,22 +73,28 @@ JWT_EXPIRY_DAYS = int(os.getenv("JWT_EXPIRY_DAYS", "7"))
 # --- Frontend ---
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
 
-# In config.py
+rate_limiter = InMemoryRateLimiter(
+    requests_per_second=0.25,  # 15 RPM
+    check_every_n_seconds=0.1,
+    max_bucket_size=5,
+)
 
-basic_model = ChatOpenAI(
+basic_model = ThrottledChatModel(ChatOpenAI(
     base_url="https://api.groq.com/openai/v1",
     api_key=os.getenv("GROQ_API_KEY"),
     model="meta-llama/llama-4-scout-17b-16e-instruct",
     temperature=0.5,
     max_tokens=8192,
-)
+    rate_limiter=rate_limiter
+))
 
-advanced_model = ChatOpenAI(
+advanced_model = ThrottledChatModel(ChatOpenAI(
     base_url="https://api.groq.com/openai/v1",
     api_key=os.getenv("GROQ_API_KEY"),
     model="llama-3.3-70b-versatile",
     temperature=0.5,
     max_tokens=8192,
-)
+    rate_limiter=rate_limiter
+))
 
 ENCRYPTION_KEY = os.getenv("ENCRYPTION_KEY")
