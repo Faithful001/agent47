@@ -13,7 +13,6 @@ from agent47.config.config import advanced_model
 from agent47.sandbox.tools import (
     execute_sandbox_command,
     read_sandbox_file,
-    modify_sandbox_file,
     replace_in_sandbox_file,
 )
 
@@ -46,16 +45,14 @@ You have access to these tools:
 - execute_sandbox_command: Run any shell command in the sandbox
 - read_sandbox_file: Read the contents of a file in the sandbox
 - replace_in_sandbox_file: Replace a specific string in a file (preferred for fixes)
-- modify_sandbox_file: Write / overwrite an entire file in the sandbox
 
 Your protocol:
 1. **Read** — Read only the relevant files identified by the Handler.
    Do not explore the entire repo.
 2. **Fix** — Apply the minimal precise fix:
-   - ALWAYS prefer replace_in_sandbox_file for targeted changes.
+   - ALWAYS use replace_in_sandbox_file for targeted changes.
      Provide the EXACT string from the file as old_content — copy it
      directly from what you read, do not paraphrase or reconstruct it.
-   - Only use modify_sandbox_file if the entire file needs to be rewritten.
 3. **Verify** — Run the test suite via execute_sandbox_command.
    Include the full test output in your report.
 4. **Report** — When you are done, output your final answer as a raw JSON object
@@ -85,6 +82,6 @@ Good luck, 47.\
 
 operative_agent = create_react_agent(
     model=advanced_model,
-    tools=[execute_sandbox_command, read_sandbox_file, modify_sandbox_file, replace_in_sandbox_file],
+    tools=[execute_sandbox_command, read_sandbox_file, replace_in_sandbox_file],
     prompt=OPERATIVE_SYSTEM_PROMPT,
 )

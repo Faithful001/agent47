@@ -22,7 +22,11 @@ def execute_sandbox_command(command: str) -> str:
     or inspect the project structure (`ls`, `find`, etc.).
     """
     try:
-        return sandbox.execute_command(command)
+        output = sandbox.execute_command(command)
+        MAX_CHARS = 3000
+        if len(output) > MAX_CHARS:
+            return f"{output[:500]}\n\n...[TRUNCATED {len(output) - MAX_CHARS} chars]...\n\n{output[-2500:]}"
+        return output
     except RuntimeError as exc:
         return f"Sandbox error: {exc}"
 
@@ -36,20 +40,6 @@ def read_sandbox_file(filepath: str) -> str:
     """
     try:
         return sandbox.read_file_from_container(filepath)
-    except RuntimeError as exc:
-        return f"Sandbox error: {exc}"
-
-
-@tool
-def modify_sandbox_file(filepath: str, content: str) -> str:
-    """Write content to a file in the Docker sandbox, creating or overwriting it.
-
-    Use this to apply your code fix. Provide the FULL file content —
-    this tool overwrites the entire file.
-    Always use absolute paths inside the container (e.g. `/workspace/src/app.py`).
-    """
-    try:
-        return sandbox.write_file_in_container(filepath, content)
     except RuntimeError as exc:
         return f"Sandbox error: {exc}"
 

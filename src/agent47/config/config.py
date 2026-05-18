@@ -80,19 +80,19 @@ rate_limiter = InMemoryRateLimiter(
 )
 
 basic_model = ThrottledChatModel(ChatOpenAI(
-    base_url="https://api.groq.com/openai/v1",
-    api_key=os.getenv("GROQ_API_KEY"),
-    model="meta-llama/llama-4-scout-17b-16e-instruct",
-    temperature=0.5,
+    base_url="https://api.deepseek.com/v1",
+    api_key=os.getenv("DEEPSEEK_API_KEY"),
+    model="deepseek-chat",
+    temperature=0.0,
     max_tokens=8192,
     rate_limiter=rate_limiter
 ))
 
 advanced_model = ThrottledChatModel(ChatOpenAI(
-    base_url="https://api.groq.com/openai/v1",
-    api_key=os.getenv("GROQ_API_KEY"),
-    model="llama-3.3-70b-versatile",
-    temperature=0.5,
+    base_url="https://api.deepseek.com/v1",
+    api_key=os.getenv("DEEPSEEK_API_KEY"),
+    model="deepseek-chat",
+    temperature=0.0,
     max_tokens=8192,
     rate_limiter=rate_limiter
 ))
