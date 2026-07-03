@@ -130,7 +130,6 @@ def parse_issues_from_logs(log_sections: list) -> list:
         if not section.get("has_error"):
             continue
         for line in section.get("lines", []):
-            # Parse TypeScript error: modules/rag/rag.controller.ts(5,41): error TS2552: Cannot find name 'sponse'. Did you mean 'Response'?
             match = re.match(r"^([^\(]+)\((\d+),(\d+)\):\s*error\s+(\w+):\s*(.*)$", line)
             if match:
                 issues.append({
@@ -368,6 +367,7 @@ def run_ci_task(build_id: str, repo_id: str):
         logger.info("Building base image with Railpack: %s from %s", candidate_image_name, build_dir)
 
         try:
+            # # To use Railpack in production, uncomment this block:
             # subprocess.run(
             #     ["railpack", "build", "--name", candidate_image_name, build_dir],
             #     check=True,

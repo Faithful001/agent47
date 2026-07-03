@@ -93,6 +93,17 @@ def setup_sandbox_node(state: ContractState):
         image_name = f"sandbox_img_{uuid.uuid4().hex}"
         logger.info("Building sandbox image with Railpack: %s from %s", image_name, abs_workspace)
         try:
+            # # To use Railpack in production, uncomment this block:
+            # subprocess.run(
+            #     ["railpack", "build", "--name", image_name, abs_workspace],
+            #     check=True,
+            #     capture_output=True,
+            #     text=True,
+            # )
+            # sandbox.image = image_name
+            # railpack_image_name = image_name
+
+            # # And comment out the heuristic fallback below:
             sandbox.image = detect_base_image(abs_workspace)
             railpack_image_name = None
         except subprocess.CalledProcessError as e:
