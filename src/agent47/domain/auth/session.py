@@ -1,7 +1,3 @@
-"""
-Session model — database-backed sessions for JWT revocation.
-"""
-
 import uuid
 from datetime import datetime, timezone
 

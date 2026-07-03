@@ -35,5 +35,5 @@ async def get_redis() -> AsyncGenerator[Redis, None]:
 async def redis_lifespan(app: FastAPI):
     pool = get_redis_pool()
     async with Redis(connection_pool=pool) as r:
-        await r.ping()
+        r.ping()
     yield

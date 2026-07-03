@@ -1,7 +1,3 @@
-"""
-Shared state schema for the Agent47 LangGraph workflow.
-"""
-
 from typing import Annotated
 from typing_extensions import TypedDict
 from langgraph.graph.message import add_messages
@@ -54,3 +50,7 @@ class ContractState(TypedDict):
 
     # How many fix attempts the Operative has made
     attempt_count: int
+
+    # Custom repository config & rules (loaded from .agent47.yaml)
+    custom_rules: list[str]
+    custom_test_command: str | None

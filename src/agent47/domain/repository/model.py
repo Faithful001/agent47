@@ -1,5 +1,3 @@
-"""Repository model — SQLAlchemy table for tracked GitHub repos."""
-
 import uuid
 from datetime import datetime, timezone
 

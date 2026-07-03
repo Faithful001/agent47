@@ -1,16 +1,10 @@
-"""
-The Operative Agent (Agent 47).
-Reads files, writes code fixes, and verifies them inside the
-Docker sandbox — looping until the contract is fulfilled.
-"""
-
 from typing import Literal
 
 from pydantic import BaseModel
 from langgraph.prebuilt import create_react_agent
 
 from agent47.config.config import advanced_model
-from agent47.sandbox.tools import (
+from agent47.infra.sandbox.tools import (
     execute_sandbox_command,
     read_sandbox_file,
     replace_in_sandbox_file,
@@ -32,6 +26,9 @@ class OperativeResponse(BaseModel):
 
 OPERATIVE_SYSTEM_PROMPT = """\
 You are Agent 47 — the Operative.
+
+CRITICAL REQUIREMENT: Your very last message MUST be a raw JSON object.
+No markdown, no code fences, no explanation — ONLY the JSON object.
 
 You have been deployed into a secure sandbox environment containing a
 target codebase with a known bug. Your mission: eliminate the bug with
@@ -55,15 +52,9 @@ Your protocol:
      directly from what you read, do not paraphrase or reconstruct it.
 3. **Verify** — Run the test suite via execute_sandbox_command.
    Include the full test output in your report.
-4. **Report** — When you are done, output your final answer as a raw JSON object
-   with exactly these fields (no markdown, no code fences, just JSON):
-   {
-     "fix_summary": "concise description of what was changed and why",
-     "files_modified": ["list", "of", "file", "paths"],
-     "test_command": "the command you ran",
-     "test_output": "the raw output from the test command",
-     "status": "fixed" | "partial" | "failed"
-   }
+4. **Report** — When you are done, your FINAL message must be ONLY a raw JSON object
+   with exactly these fields (no markdown, no code fences, no explanation, JUST the JSON):
+   {"fix_summary": "...", "files_modified": ["..."], "test_command": "...", "test_output": "...", "status": "fixed|partial|failed"}
 
 Rules:
 - Read the file before modifying it. Always copy old_content exactly
@@ -73,6 +64,8 @@ Rules:
   trying again. Never modify from memory.
 - Never exceed 5 attempts. Report failed if you cannot fix it.
 - Always verify before reporting success.
+- Your FINAL message must ALWAYS be a valid JSON object. Never end with
+  tool output, explanations, or anything other than the JSON report.
 
 Good luck, 47.\
 """

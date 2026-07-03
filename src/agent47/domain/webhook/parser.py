@@ -1,7 +1,3 @@
-"""
-GitHub Webhook Parser — extracts CI failure info from webhook payloads.
-"""
-
 import hashlib
 import hmac
 from dataclasses import dataclass
@@ -43,6 +39,10 @@ def parse_webhook_event(event_type: str, payload: dict) -> WebhookFailure | None
         return _parse_workflow_run(payload)
     if event_type == "pull_request":
         return _parse_pull_request(payload)
+    if event_type == "issue_comment":
+        return _parse_issue_comment(payload)
+    if event_type == "pull_request_review_comment":
+        return _parse_pull_request_review_comment(payload)
     # if event_type == "push":
     #     return _parse_push(payload)
     return None
@@ -206,3 +206,62 @@ def _parse_pull_request(payload: dict) -> WebhookFailure | None:
 #         error_message=f"Push to {branch}: {commit_message.splitlines()[0]}",
 #         commit_sha=commit_sha,
 #     )
+
+
+def _parse_issue_comment(payload: dict) -> WebhookFailure | None:
+    """Extract comment trigger info if a comment contains @agent47."""
+    action = payload.get("action")
+    if action not in ("created", "edited"):
+        return None
+
+    comment = payload.get("comment", {})
+    body = comment.get("body", "")
+    if "@agent47" not in body.lower():
+        return None
+
+    repo = payload.get("repository", {})
+    issue = payload.get("issue", {})
+    
+    # Check if this issue is actually a pull request
+    pr_number = None
+    if "pull_request" in issue:
+        pr_number = issue.get("number")
+    else:
+        # If it is a normal issue comment (not a PR comment), ignore it since we need code/branch context to fix things
+        return None
+        
+    error_message = f"Interactive trigger from PR comment: {body}"
+    
+    return WebhookFailure(
+        repo_full_name=repo.get("full_name", ""),
+        branch="",
+        error_message=error_message,
+        commit_sha="",
+        pr_number=pr_number,
+    )
+
+
+def _parse_pull_request_review_comment(payload: dict) -> WebhookFailure | None:
+    """Extract comment trigger info from pull_request_review_comment events."""
+    action = payload.get("action")
+    if action not in ("created", "edited"):
+        return None
+
+    comment = payload.get("comment", {})
+    body = comment.get("body", "")
+    if "@agent47" not in body.lower():
+        return None
+
+    repo = payload.get("repository", {})
+    pr = payload.get("pull_request", {})
+    pr_number = pr.get("number")
+
+    error_message = f"Interactive trigger from PR review comment: {body}"
+
+    return WebhookFailure(
+        repo_full_name=repo.get("full_name", ""),
+        branch="",
+        error_message=error_message,
+        commit_sha="",
+        pr_number=pr_number,
+    )

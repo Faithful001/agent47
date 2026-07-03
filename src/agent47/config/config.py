@@ -80,18 +80,18 @@ rate_limiter = InMemoryRateLimiter(
 )
 
 basic_model = ThrottledChatModel(ChatOpenAI(
-    base_url="https://api.deepseek.com/v1",
-    api_key=os.getenv("DEEPSEEK_API_KEY"),
-    model="deepseek-chat",
+    base_url="https://openrouter.ai/api/v1",
+    api_key=os.getenv("OPENROUTER_API_KEY"),
+    model="deepseek/deepseek-chat",
     temperature=0.0,
     max_tokens=8192,
     rate_limiter=rate_limiter
 ))
 
 advanced_model = ThrottledChatModel(ChatOpenAI(
-    base_url="https://api.deepseek.com/v1",
-    api_key=os.getenv("DEEPSEEK_API_KEY"),
-    model="deepseek-chat",
+    base_url="https://openrouter.ai/api/v1",
+    api_key=os.getenv("OPENROUTER_API_KEY"),
+    model="deepseek/deepseek-chat",
     temperature=0.0,
     max_tokens=8192,
     rate_limiter=rate_limiter

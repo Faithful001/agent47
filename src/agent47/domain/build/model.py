@@ -1,4 +1,5 @@
-from sqlalchemy import String, ForeignKey, DateTime
+from typing import Optional
+from sqlalchemy import String, ForeignKey, DateTime, JSON, Integer, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from datetime import datetime, timezone
 import uuid
@@ -28,8 +29,17 @@ class Build(Base):
         default=lambda: datetime.now(timezone.utc),
     )
 
+    status: Mapped[Optional[str]] = mapped_column(String, default="pending", nullable=True)
+    files_changed: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    log_sections: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
+    fix_summary: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    identified_issues: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
+    total_additions: Mapped[Optional[int]] = mapped_column(Integer, default=0, nullable=True)
+    total_deletions: Mapped[Optional[int]] = mapped_column(Integer, default=0, nullable=True)
+    duration_ms: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+
     def __repr__(self):
         return (
             f"Build(id={self.id!r}, "
             f"commit_title={self.commit_title!r},"
-        )
+        )

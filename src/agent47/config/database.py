@@ -36,3 +36,14 @@ def get_db():
 def create_tables():
     """Create all tables in the database (for dev/bootstrap)."""
     Base.metadata.create_all(bind=engine)
+    from sqlalchemy import text
+    with engine.begin() as conn:
+        conn.execute(text("ALTER TABLE builds ADD COLUMN IF NOT EXISTS status VARCHAR DEFAULT 'pending';"))
+        conn.execute(text("ALTER TABLE builds ADD COLUMN IF NOT EXISTS files_changed JSONB;"))
+        conn.execute(text("ALTER TABLE builds ADD COLUMN IF NOT EXISTS log_sections JSONB;"))
+        conn.execute(text("ALTER TABLE builds ADD COLUMN IF NOT EXISTS fix_summary TEXT;"))
+        conn.execute(text("ALTER TABLE builds ADD COLUMN IF NOT EXISTS identified_issues JSONB;"))
+        conn.execute(text("ALTER TABLE builds ADD COLUMN IF NOT EXISTS total_additions INTEGER DEFAULT 0;"))
+        conn.execute(text("ALTER TABLE builds ADD COLUMN IF NOT EXISTS total_deletions INTEGER DEFAULT 0;"))
+        conn.execute(text("ALTER TABLE builds ADD COLUMN IF NOT EXISTS duration_ms INTEGER;"))
+

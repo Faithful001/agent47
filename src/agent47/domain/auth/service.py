@@ -1,7 +1,4 @@
-"""
-Auth service — GitHub OAuth flow + JWT session management.
-"""
-
+import logging
 from datetime import datetime, timedelta, timezone
 
 import httpx
@@ -9,6 +6,7 @@ import jwt
 from github import Github
 from sqlalchemy import select
 from sqlalchemy.orm import Session as DBSession
+import logging
 
 from agent47.config.config import (
     GITHUB_CLIENT_ID,
@@ -19,10 +17,9 @@ from agent47.config.config import (
 )
 from agent47.domain.auth.session import Session
 
+logger = logging.getLogger(__name__)
 
 class AuthService:
-
-    # ── GitHub OAuth ─────────────────────────────────────────────
 
     @staticmethod
     def get_oauth_login_url() -> str:
@@ -32,12 +29,11 @@ class AuthService:
             "https://github.com/login/oauth/authorize"
             f"?client_id={GITHUB_CLIENT_ID}"
             f"&redirect_uri={GITHUB_REDIRECT_URI}"
-            "&scope=repo,read:org"
+            "&scope=repo,read:org,user:email"
         )
 
     @staticmethod
     async def exchange_code_for_token(code: str) -> str:
-        """Exchange a temporary OAuth code for a GitHub access token."""
         async with httpx.AsyncClient() as client:
             response = await client.post(
                 "https://github.com/login/oauth/access_token",
@@ -63,14 +59,31 @@ class AuthService:
         """Fetch the authenticated user's GitHub profile."""
         gh = Github(token)
         user = gh.get_user()
+        logger.info("user from github %s", user)
+
+        email = user.email or ""
+        if not email:
+            try:
+                emails = user.get_emails()
+                for e in emails:
+                    if e.primary:
+                        email = e.email
+                        break
+                    elif e.verified and not email:
+                        email = e.email
+                if not email and emails:
+                    email = emails[0].email
+            except Exception as ex:
+                logger.warning("Could not fetch user emails: %s", ex)
+
         return {
             "login": user.login,
             "id": user.id,
             "avatar_url": user.avatar_url,
-            "email": user.email or "",
+            "email": email,
         }
 
-    # ── JWT Session Management ───────────────────────────────────
+    # JWT Session Management
 
     @staticmethod
     def create_session(db: DBSession, user_id: str) -> str:

@@ -1,7 +1,3 @@
-"""
-Repositories router — connect, track, and manage GitHub repos.
-"""
-
 from agent47.utils.crypto import decrypt_value
 from agent47.domain.repository.dto.update_repo_dto import UpdateRepoDto
 from fastapi import APIRouter, Depends, HTTPException

@@ -1,8 +1,3 @@
-"""
-LangGraph workflow that connects the Handler and Operative agents,
-with sandbox setup and PR creation nodes.
-"""
-
 import json
 import logging
 import time
@@ -13,7 +8,7 @@ from langgraph.graph import StateGraph, END
 from agent47.state import ContractState
 from agent47.agents.handler import handler_agent, HandlerResponse
 from agent47.agents.operative import operative_agent, OperativeResponse
-from agent47.sandbox.tools import sandbox
+from agent47.infra.sandbox.tools import sandbox
 from agent47.utils.docker_utils import detect_base_image
 
 logger = logging.getLogger(__name__)
@@ -46,22 +41,26 @@ def _invoke_with_retry(agent, input_data, agent_name: str, max_retries=API_MAX_R
             )
             last_exc = exc
             time.sleep(delay)
-    raise last_exc
+    if last_exc is not None:
+        raise last_exc
+    raise RuntimeError("API retry limit reached without catching any exception")
 
 
 def _parse_json_response(content: str, model_class, agent_name: str):
     """Extract and parse a JSON object from a model's final message content."""
     clean = content.strip()
 
-    # Strip markdown code fences if present
-    if clean.startswith("```"):
-        lines = clean.split("\n")
-        # Remove opening fence (```json or ```)
-        lines = lines[1:]
-        # Remove closing fence
-        if lines and lines[-1].strip().startswith("```"):
-            lines = lines[:-1]
-        clean = "\n".join(lines).strip()
+    # Try to extract content inside markdown code block first
+    import re
+    code_block_match = re.search(r"```(?:json)?\n(.*?)\n```", clean, re.DOTALL)
+    if code_block_match:
+        clean = code_block_match.group(1).strip()
+    else:
+        # Fallback: find the first '{' and the last '}'
+        start_idx = clean.find("{")
+        end_idx = clean.rfind("}")
+        if start_idx != -1 and end_idx != -1 and end_idx > start_idx:
+            clean = clean[start_idx:end_idx + 1].strip()
 
     try:
         parsed = json.loads(clean)
@@ -86,6 +85,9 @@ def setup_sandbox_node(state: ContractState):
 
     railpack_image_name = None
 
+    custom_rules = []
+    custom_test_cmd = None
+
     if workspace:
         abs_workspace = os.path.abspath(workspace)
         image_name = f"sandbox_img_{uuid.uuid4().hex}"
@@ -99,6 +101,26 @@ def setup_sandbox_node(state: ContractState):
         except FileNotFoundError:
             logger.warning("Railpack CLI not found. Falling back to heuristic detection.")
             sandbox.image = detect_base_image(abs_workspace)
+
+        # Parse custom .agent47.yaml configuration
+        config_path = os.path.join(abs_workspace, ".agent47.yaml")
+        if os.path.exists(config_path):
+            try:
+                import yaml
+                with open(config_path, "r", encoding="utf-8") as f:
+                    cfg = yaml.safe_load(f) or {}
+                    if isinstance(cfg, dict):
+                        custom_rules = cfg.get("rules", [])
+                        if not isinstance(custom_rules, list):
+                            custom_rules = [str(custom_rules)]
+                        # Clean up rule strings
+                        custom_rules = [str(r).strip() for r in custom_rules if r]
+                        custom_test_cmd = cfg.get("test_command")
+                        if custom_test_cmd:
+                            custom_test_cmd = str(custom_test_cmd).strip()
+                logger.info("Loaded custom config from .agent47.yaml: rules=%s, test_command=%s", custom_rules, custom_test_cmd)
+            except Exception as e:
+                logger.warning("Failed to parse .agent47.yaml: %s", e)
     else:
         sandbox.image = "ubuntu:22.04"
 
@@ -108,7 +130,12 @@ def setup_sandbox_node(state: ContractState):
         sandbox.execute_command("mkdir -p /workspace")
         sandbox.copy_repo_to_container(abs_workspace, "/workspace")
 
-    return {"repo_path": "/workspace", "railpack_image_name": railpack_image_name}
+    return {
+        "repo_path": "/workspace",
+        "railpack_image_name": railpack_image_name,
+        "custom_rules": custom_rules,
+        "custom_test_command": custom_test_cmd,
+    }
 
 
 def handler_node(state: ContractState):
@@ -134,6 +161,9 @@ def operative_node(state: ContractState):
     attempt = state.get("attempt_count", 0) + 1
     previous_output = state.get("test_output", "")
 
+    custom_rules = state.get("custom_rules", [])
+    custom_test_cmd = state.get("custom_test_command")
+
     briefing_parts = [
         f"## Contract (Attempt {attempt}/{MAX_ATTEMPTS})",
         f"**Bug:** {bug}",
@@ -141,6 +171,16 @@ def operative_node(state: ContractState):
         f"**Working directory:** Always run commands from /workspace. Example: `cd /workspace && npm run build`",
         f"**Important:** Read the relevant files FIRST before attempting any fix. Do not guess — find the exact syntax error in the file.",
     ]
+
+    if custom_rules:
+        rules_str = "\n".join(f"- {rule}" for rule in custom_rules)
+        briefing_parts.append(f"**Custom Repository Coding Guidelines & Constraints:**\n{rules_str}")
+
+    if custom_test_cmd:
+        briefing_parts.append(
+            f"**Custom Test Command:** You must verify your fix using this command: `{custom_test_cmd}`. "
+            f"Always run this test command from /workspace (e.g. `cd /workspace && {custom_test_cmd}`)."
+        )
     if previous_output:
         previous_output = previous_output[-500:]  # trim to avoid token bloat
         briefing_parts.append(
@@ -164,7 +204,33 @@ def operative_node(state: ContractState):
 
     logger.info("Operative last message: %s", content[:500])
 
-    response = _parse_json_response(content, OperativeResponse, "Operative")
+    try:
+        response = _parse_json_response(content, OperativeResponse, "Operative")
+    except RuntimeError:
+        # Recovery: the model forgot to output JSON. Re-prompt with all
+        # prior messages asking it to produce the required JSON report.
+        logger.warning("Operative did not produce valid JSON. Attempting recovery re-prompt...")
+        from agent47.config.config import advanced_model
+
+        recovery_messages = list(messages) + [
+            {"role": "user", "content": (
+                "Your last message was not valid JSON. You MUST respond with ONLY "
+                "a raw JSON object containing these exact fields:\n"
+                "{\"fix_summary\": \"...\", \"files_modified\": [\"...\"], "
+                "\"test_command\": \"...\", \"test_output\": \"...\", "
+                "\"status\": \"fixed|partial|failed\"}\n"
+                "Output ONLY the JSON. No explanation, no markdown, no code fences."
+            )}
+        ]
+        recovery_result = _invoke_with_retry(
+            advanced_model,
+            recovery_messages,
+            agent_name="Operative-Recovery",
+            max_retries=2,
+        )
+        recovery_content = recovery_result.content if hasattr(recovery_result, "content") else str(recovery_result)
+        logger.info("Operative recovery response: %s", recovery_content[:500])
+        response = _parse_json_response(recovery_content, OperativeResponse, "Operative")
 
     logger.info(
         "Operative attempt %d/%d — status: %s", attempt, MAX_ATTEMPTS, response.status

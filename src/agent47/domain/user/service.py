@@ -1,7 +1,3 @@
-"""
-User service — database operations for the User model.
-"""
-
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 

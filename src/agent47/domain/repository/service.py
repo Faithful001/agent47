@@ -1,7 +1,3 @@
-"""
-Repositories service — repo listing, webhook management, and DB operations.
-"""
-
 from agent47.utils.crypto import encrypt_value
 from agent47.domain.repository.dto.update_repo_dto import UpdateRepoDto
 from fastapi import HTTPException
@@ -67,7 +63,7 @@ class RepositoryService:
             hook = repo.create_hook(
                 name="web",
                 config=config,
-                events=["check_suite", "check_run", "workflow_run", "pull_request", "push"],
+                events=["check_suite", "check_run", "workflow_run", "pull_request", "push", "issue_comment", "pull_request_review_comment"],
                 active=True,
             )
             return hook.id
@@ -79,7 +75,7 @@ class RepositoryService:
                 hook.edit(
                     name="web",
                     config=config,
-                    events=["check_suite", "check_run", "workflow_run", "pull_request", "push"],
+                    events=["check_suite", "check_run", "workflow_run", "pull_request", "push", "issue_comment", "pull_request_review_comment"],
                     active=True,
                 )
                 return hook.id
@@ -103,7 +99,7 @@ class RepositoryService:
         hook.edit(
             name="web",
             config=config,
-            events=["check_run", "pull_request", "status", "push"],
+            events=["check_suite", "check_run", "workflow_run", "pull_request", "push", "issue_comment", "pull_request_review_comment"],
             active=True,
         )
 

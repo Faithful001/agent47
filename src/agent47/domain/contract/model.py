@@ -1,5 +1,3 @@
-"""Contract model — SQLAlchemy table for bug-fix mission lifecycle."""
-
 import uuid
 from datetime import datetime, timezone
 

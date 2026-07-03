@@ -28,6 +28,19 @@ class BuildService:
     def get_builds(self, repo_id: str, user_id: str):
         return self.db.query(Build).filter(Build.repo_id == repo_id, Build.user_id == user_id).all()
     
+    def get_builds_paginated(self, repo_id: str, user_id: str, page: int = 1, limit: int = 10):
+        offset = (page - 1) * limit
+        query = self.db.query(Build).filter(Build.repo_id == repo_id, Build.user_id == user_id).order_by(Build.created_at.desc())
+        total = query.count()
+        items = query.offset(offset).limit(limit).all()
+        return {
+            "items": items,
+            "total": total,
+            "page": page,
+            "limit": limit,
+            "has_more": offset + len(items) < total
+        }
+    
     def get_builds_by_branch(self, repo_id: str, branch: str, user_id: str):
         return self.db.query(Build).filter(Build.repo_id == repo_id, Build.branch == branch, Build.user_id == user_id).all()
     

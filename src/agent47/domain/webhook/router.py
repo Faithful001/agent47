@@ -1,7 +1,3 @@
-"""
-Webhooks router — receive and process GitHub webhook events.
-"""
-
 import logging
 from typing import Any, Dict
 
@@ -106,29 +102,6 @@ async def receive_github_webhook(
                 
         return _default_response(event_type, delivery_id)
 
-    # Normalize & validate failure
-    commit_sha = (failure.commit_sha or "").strip()
-    if not commit_sha:
-        logger.warning("Incomplete failure data - sha missing")
-        return _default_response(event_type, delivery_id)
-
-    # Business deduplication: one agent run per broken commit
-    commit_key = f"agent:processed:{repo_full_name}:{commit_sha}"
-
-    try:
-        if await redis.get(commit_key):
-            logger.info(
-                "Skipping duplicate failure processing → repo=%s commit=%s",
-                repo_full_name, commit_sha[:8]
-            )
-            return {
-                "status": "skipped",
-                "reason": "Already processing / processed this commit failure",
-                "delivery": delivery_id,
-            }
-    except RedisError as exc:
-        logger.warning("Redis unavailable - proceeding without dedup", exc_info=exc)
-
     # Get user
     user_svc = UserService(db)
     user = user_svc.get_user(tracked_repo.user_id)
@@ -136,6 +109,76 @@ async def receive_github_webhook(
     if not user:
         logger.error("No user found for tracked repo: %s", repo_full_name)
         raise HTTPException(500, "Tracked repository has no associated user")
+
+    # If we have a branch name but no pr_number, check if there's an open PR for this branch
+    if failure.branch and not failure.pr_number:
+        if failure.branch != tracked_repo.default_branch:
+            try:
+                from github import Github
+                gh = Github(user.github_access_token)
+                gh_repo = gh.get_repo(repo_full_name)
+                owner = repo_full_name.split("/")[0]
+                prs = gh_repo.get_pulls(state="open", head=f"{owner}:{failure.branch}")
+                if prs.totalCount > 0:
+                    failure.pr_number = prs[0].number
+                    logger.info("Auto-resolved branch %s to open PR #%d", failure.branch, failure.pr_number)
+            except Exception as exc:
+                logger.warning("Failed to auto-resolve PR for branch %s: %s", failure.branch, exc)
+
+    # Fetch branch/commit_sha details and enrich trigger with PR context if pr_number is set
+    if failure.pr_number:
+        try:
+            from github import Github
+            gh = Github(user.github_access_token)
+            gh_repo = gh.get_repo(repo_full_name)
+            pr = gh_repo.get_pull(failure.pr_number)
+            
+            if not failure.branch or not failure.commit_sha:
+                failure.branch = pr.head.ref
+                failure.commit_sha = pr.head.sha
+                logger.info("Fetched PR details for interactive trigger: pr=%d branch=%s sha=%s", failure.pr_number, failure.branch, failure.commit_sha[:8])
+                
+            pr_files = [f.filename for f in pr.get_files()]
+            files_str = ", ".join(pr_files)
+            
+            failure.error_message = (
+                f"{failure.error_message}\n\n"
+                f"--- PR CONTEXT ---\n"
+                f"PR Title: {pr.title}\n"
+                f"PR Description: {pr.body or 'No description'}\n"
+                f"PR Changed Files: {files_str}"
+            )
+        except Exception as exc:
+            logger.error("Failed to fetch/enrich PR details: %s", exc)
+            if not failure.branch or not failure.commit_sha:
+                return {
+                    "status": "error",
+                    "reason": f"Failed to fetch PR details for interactive trigger: {exc}",
+                    "delivery": delivery_id,
+                }
+
+    # Normalize & validate failure
+    commit_sha = (failure.commit_sha or "").strip()
+    if not commit_sha:
+        logger.warning("Incomplete failure data - sha missing")
+        return _default_response(event_type, delivery_id)
+
+    commit_key = f"agent:processed:{repo_full_name}:{commit_sha}"
+
+    if event_type not in ("issue_comment", "pull_request_review_comment"):
+        try:
+            if await redis.get(commit_key):
+                logger.info(
+                    "Skipping duplicate failure processing → repo=%s commit=%s",
+                    repo_full_name, commit_sha[:8]
+                )
+                return {
+                    "status": "skipped",
+                    "reason": "Already processing / processed this commit failure",
+                    "delivery": delivery_id,
+                }
+        except RedisError as exc:
+            logger.warning("Redis unavailable - proceeding without dedup", exc_info=exc)
 
     # Create contract
     @retry(
@@ -169,6 +212,23 @@ async def receive_github_webhook(
         user_id=user.id,
         repo_url=repo_url_with_token,
     )
+
+    # Post an immediate acknowledgment comment on the PR if manual trigger
+    if event_type in ("issue_comment", "pull_request_review_comment") and failure.pr_number:
+        try:
+            from github import Github
+            gh = Github(user.github_access_token)
+            repo = gh.get_repo(repo_full_name)
+            pr = repo.get_pull(failure.pr_number)
+            pr.create_issue_comment(
+                "**Agent47 Protocol Initiated**\n\n"
+                "I have received your request and spawning a secure Docker sandbox "
+                "to analyze the files and verify a fix. I will post inline suggestions here shortly. "
+                f"\n\n*Contract ID: `{contract.id}`*"
+            )
+            logger.info("Posted acknowledgment comment to PR #%d", failure.pr_number)
+        except Exception as exc:
+            logger.warning("Failed to post acknowledgment comment: %s", exc)
 
     logger.info(
         "Pipeline enqueued → contract=%s repo=%s commit=%s delivery=%s",
