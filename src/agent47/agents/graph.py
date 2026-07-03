@@ -103,7 +103,7 @@ def setup_sandbox_node(state: ContractState):
             # sandbox.image = image_name
             # railpack_image_name = image_name
 
-            # # And comment out the heuristic fallback below:
+            # And comment out the heuristic fallback below:
             sandbox.image = detect_base_image(abs_workspace)
             railpack_image_name = None
         except subprocess.CalledProcessError as e:

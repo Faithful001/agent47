@@ -366,38 +366,27 @@ def run_ci_task(build_id: str, repo_id: str):
         candidate_image_name = f"ci_image_{build_id}"
         logger.info("Building base image with Railpack: %s from %s", candidate_image_name, build_dir)
 
-        try:
-            # # To use Railpack in production, uncomment this block:
-            # subprocess.run(
-            #     ["railpack", "build", "--name", candidate_image_name, build_dir],
-            #     check=True,
-            #     capture_output=True,
-            #     text=True,
-            # )
+        # # To use Railpack in production, uncomment the block below and comment out the Heuristics block:
+        # try:
+        #     subprocess.run(
+        #         ["railpack", "build", "--name", candidate_image_name, build_dir],
+        #         check=True,
+        #         capture_output=True,
+        #         text=True,
+        #     )
+        #     base_image = candidate_image_name
+        #     railpack_image_name = candidate_image_name  # mark for post-run cleanup
+        #     logger.info("Railpack image verified in Docker daemon: %s", base_image)
+        # except subprocess.CalledProcessError as e:
+        #     logger.warning("Railpack build failed: %s. Falling back to heuristic detection.", e.stderr)
+        #     base_image = detect_base_image(build_dir)
+        # except FileNotFoundError:
+        #     logger.warning("Railpack CLI not found. Falling back to heuristic detection.")
+        #     base_image = detect_base_image(build_dir)
 
-            base_image = detect_base_image(build_dir)
-            try:
-                client.images.get(candidate_image_name)
-                base_image = candidate_image_name
-                railpack_image_name = candidate_image_name  # mark for post-run cleanup
-                logger.info("Railpack image verified in Docker daemon: %s", base_image)
-            except docker.errors.ImageNotFound:
-                logger.warning(
-                    "Railpack reported success but image '%s' not found in Docker daemon. "
-                    "Falling back to heuristic detection.",
-                    candidate_image_name,
-                )
-                base_image = detect_base_image(build_dir)
-                logger.info("Fallback base image detected: %s", base_image)
-
-        except subprocess.CalledProcessError as e:
-            logger.warning("Railpack build failed: %s. Falling back to heuristic detection.", e.stderr)
-            base_image = detect_base_image(build_dir)
-            logger.info("Fallback base image detected: %s", base_image)
-        except FileNotFoundError:
-            logger.warning("Railpack CLI not found. Falling back to heuristic detection.")
-            base_image = detect_base_image(build_dir)
-            logger.info("Fallback base image detected: %s", base_image)
+        # Heuristic detection. COMMENT IN PRODUCTION
+        base_image = detect_base_image(build_dir)
+        logger.info("Heuristic base image detected: %s", base_image)
 
         logger.info("Base image resolved: %s", base_image)
 
