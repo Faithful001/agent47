@@ -1,3 +1,7 @@
+from __future__ import annotations
+
+from agent47.domain.repository.model import Repository
+from agent47.domain.user.model import User
 from typing import Optional
 from sqlalchemy import String, ForeignKey, DateTime, JSON, Integer, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -17,8 +21,8 @@ class Build(Base):
     user_id: Mapped[str] = mapped_column(
         String, ForeignKey("users.id"), nullable=False
     )
-    user: Mapped["User"] = relationship("User", back_populates="builds")
-    repo: Mapped["Repository"] = relationship("Repository", back_populates="builds")
+    user: Mapped[User] = relationship("User", back_populates="builds")
+    repo: Mapped[Repository] = relationship("Repository", back_populates="builds")
     branch: Mapped[str] = mapped_column(String, nullable=False)
     commit_title: Mapped[str] = mapped_column(String, nullable=False)
     commit_description: Mapped[str] = mapped_column(String, nullable=True)
@@ -42,4 +46,4 @@ class Build(Base):
         return (
             f"Build(id={self.id!r}, "
             f"commit_title={self.commit_title!r},"
-        )
+        )

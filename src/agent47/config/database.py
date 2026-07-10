@@ -46,4 +46,7 @@ def create_tables():
         conn.execute(text("ALTER TABLE builds ADD COLUMN IF NOT EXISTS total_additions INTEGER DEFAULT 0;"))
         conn.execute(text("ALTER TABLE builds ADD COLUMN IF NOT EXISTS total_deletions INTEGER DEFAULT 0;"))
         conn.execute(text("ALTER TABLE builds ADD COLUMN IF NOT EXISTS duration_ms INTEGER;"))
+        conn.execute(text("ALTER TABLE apikeys ADD COLUMN IF NOT EXISTS model VARCHAR DEFAULT 'gemini-1.5-pro';"))
+        conn.execute(text("ALTER TABLE apikeys ADD COLUMN IF NOT EXISTS temperature FLOAT DEFAULT 0.2;"))
+        conn.execute(text("ALTER TABLE apikeys ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT FALSE;"))
 

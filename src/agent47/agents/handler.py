@@ -56,7 +56,7 @@ Output a raw JSON object with exactly these fields (no markdown, no code fences)
 }"""
 
 
-def handler_agent(repo_path: str, bug: str) -> HandlerResponse:
+def handler_agent(repo_path: str, bug: str, model=None) -> HandlerResponse:
     """
     Direct LLM call — no agent loop needed.
     Lists repo files, optionally reads suspicious ones, returns structured analysis.
@@ -76,7 +76,8 @@ def handler_agent(repo_path: str, bug: str) -> HandlerResponse:
         )),
     ]
 
-    response = basic_model.invoke(messages)
+    active_model = model or basic_model
+    response = active_model.invoke(messages)
     content = response.content.strip()
 
     # Strip markdown fences if present

@@ -145,7 +145,7 @@ class RepositoryService:
             install_command=install_command,
             build_command=build_command,
             start_command=start_command,
-            test_command=start_command,
+            test_command=test_command,
             env_vars=encrypt_value(env_vars),
             root_directory=root_directory,
             default_branch=default_branch

@@ -1,10 +1,18 @@
+from __future__ import annotations
+
 import uuid
 from datetime import datetime, timezone
+from typing import TYPE_CHECKING
 
 from sqlalchemy import String, Integer, DateTime
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from agent47.config.database import Base
+
+if TYPE_CHECKING:
+    from agent47.domain.apikey.model import ApiKey
+    from agent47.domain.repository.model import Repository
+    from agent47.domain.build.model import Build
 
 
 class User(Base):
@@ -27,12 +35,16 @@ class User(Base):
         default=lambda: datetime.now(timezone.utc),
     )
 
-    repositories: Mapped[list["Repository"]] = relationship(
+    repositories: Mapped[list[Repository]] = relationship(
         "Repository", back_populates="user", cascade="all, delete-orphan"
     )
 
-    builds: Mapped[list["Build"]] = relationship(
+    builds: Mapped[list[Build]] = relationship(
         "Build", back_populates="user", cascade="all, delete-orphan"
+    )
+
+    apikeys: Mapped[list[ApiKey]] = relationship(
+        "ApiKey", back_populates="user", cascade="all, delete-orphan"
     )
 
     def __repr__(self):

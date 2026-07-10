@@ -1,10 +1,19 @@
+from __future__ import annotations
+
 import uuid
 from datetime import datetime, timezone
 
 from sqlalchemy import String, Integer, Boolean, DateTime, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from typing import TYPE_CHECKING
+
 from agent47.config.database import Base
+
+if TYPE_CHECKING:
+    from agent47.domain.user.model import User
+    from agent47.domain.build.model import Build
+
 
 
 class Repository(Base):
@@ -18,8 +27,8 @@ class Repository(Base):
     user_id: Mapped[str] = mapped_column(
         String, ForeignKey("users.id"), nullable=False
     )
-    user: Mapped["User"] = relationship("User", back_populates="repositories")
-    builds: Mapped[list["Build"]] = relationship(
+    user: Mapped[User] = relationship("User", back_populates="repositories")
+    builds: Mapped[list[Build]] = relationship(
         "Build", back_populates="repo", cascade="all, delete-orphan", order_by="desc(Build.created_at)"
     )
     owner: Mapped[str] = mapped_column(String, nullable=False)

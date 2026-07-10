@@ -51,6 +51,12 @@ class ContractState(TypedDict):
     # How many fix attempts the Operative has made
     attempt_count: int
 
+    # The decrypted user custom API key (for BYOK)
+    user_api_key: str | None
+
+    # The user ID of the contract owner
+    user_id: str | None
+
     # Custom repository config & rules (loaded from .agent47.yaml)
     custom_rules: list[str]
     custom_test_command: str | None

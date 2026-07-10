@@ -154,7 +154,12 @@ def handler_node(state: ContractState):
     bug = state.get("bug_description", "") or error_msg
     local_repo = state.get("workspace_dir", "")
 
-    response = handler_agent(repo_path=local_repo, bug=bug)
+    from agent47.config.config import get_user_models
+    user_api_key = state.get("user_api_key")
+    user_id = state.get("user_id")
+    basic_model, _ = get_user_models(user_api_key=user_api_key, user_id=user_id)
+
+    response = handler_agent(repo_path=local_repo, bug=bug, model=basic_model)
 
     logger.info(
         "Handler identified %d relevant files: %s",
@@ -174,6 +179,22 @@ def operative_node(state: ContractState):
 
     custom_rules = state.get("custom_rules", [])
     custom_test_cmd = state.get("custom_test_command")
+
+    # Dynamically build advanced model and agent based on the user's custom key
+    from agent47.config.config import get_user_models
+    from langgraph.prebuilt import create_react_agent
+    from agent47.agents.operative import OPERATIVE_SYSTEM_PROMPT
+    from agent47.infra.sandbox.tools import execute_sandbox_command, read_sandbox_file, replace_in_sandbox_file
+
+    user_api_key = state.get("user_api_key")
+    user_id = state.get("user_id")
+    _, advanced_model = get_user_models(user_api_key=user_api_key, user_id=user_id)
+
+    agent = create_react_agent(
+        model=advanced_model,
+        tools=[execute_sandbox_command, read_sandbox_file, replace_in_sandbox_file],
+        prompt=OPERATIVE_SYSTEM_PROMPT,
+    )
 
     briefing_parts = [
         f"## Contract (Attempt {attempt}/{MAX_ATTEMPTS})",
@@ -201,7 +222,7 @@ def operative_node(state: ContractState):
     briefing = "\n\n".join(briefing_parts)
 
     result = _invoke_with_retry(
-        operative_agent,
+        agent,
         {"messages": [{"role": "user", "content": briefing}]},
         agent_name="Operative",
     )
@@ -221,7 +242,6 @@ def operative_node(state: ContractState):
         # Recovery: the model forgot to output JSON. Re-prompt with all
         # prior messages asking it to produce the required JSON report.
         logger.warning("Operative did not produce valid JSON. Attempting recovery re-prompt...")
-        from agent47.config.config import advanced_model
 
         recovery_messages = list(messages) + [
             {"role": "user", "content": (

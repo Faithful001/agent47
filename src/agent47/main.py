@@ -14,6 +14,7 @@ from agent47.domain.webhook.router import router as webhook_router
 from agent47.domain.contract.router import router as contract_router
 from agent47.domain.build.router import router as build_router
 from agent47.domain.websocket.router import router as websocket_router
+from agent47.domain.apikey.router import router as apikey_router
 import logging
 import os
 
@@ -63,6 +64,7 @@ app.include_router(webhook_router)
 app.include_router(contract_router)
 app.include_router(build_router)
 app.include_router(websocket_router)
+app.include_router(apikey_router)
 
 
 @app.get("/")

@@ -87,7 +87,11 @@ class ContractService:
     def _generate_review_body(self, contract: Contract, test_output: str) -> str:
         """Generate a structured, polished PR review body with an AI walkthrough and Mermaid diagram."""
         from langchain_core.messages import SystemMessage, HumanMessage
-        from agent47.config.config import basic_model
+        from agent47.config.config import get_user_models
+        from agent47.domain.apikey.service import ApiKeyService
+        
+        user_api_key = ApiKeyService(self.db).get_user_api_key(contract.user_id)
+        basic_model, _ = get_user_models(user_api_key=user_api_key, user_id=contract.user_id)
         
         system_prompt = (
             "You are Agent47. Synthesize a concise explanation of the bug fix you just applied. "
@@ -138,6 +142,16 @@ class ContractService:
             3. If fixed: create fix branch, commit, push, open PR
             4. Update the contract in the database
         """
+        from agent47.domain.apikey.model import ApiKey
+        active_key = self.db.query(ApiKey).filter(ApiKey.user_id == user.id, ApiKey.is_active == True).first()
+        if not active_key:
+            contract.status = "failed"
+            contract.error_message = "No active API Key configured. Please configure and select an active API Key in settings."
+            self._publish_contract_update(contract)
+            self.db.commit()
+            logger.error("Failed to execute contract: No active API Key found.")
+            return contract
+
         contract.status = "in_progress"
         
         repo_name = contract.repo_id.split("/")[-1] if "/" in contract.repo_id else contract.repo_id
@@ -163,6 +177,9 @@ class ContractService:
 
             # Step 2: Run the LangGraph workflow
             logger.info("Running Agent47 pipeline...")
+            from agent47.domain.apikey.service import ApiKeyService
+            user_api_key = ApiKeyService(self.db).get_user_api_key(user.id)
+            
             result = workflow.invoke({
                 "messages": [],
                 "bug_description": contract.error_message,
@@ -176,6 +193,8 @@ class ContractService:
                 "test_output": "",
                 "is_resolved": False,
                 "attempt_count": 0,
+                "user_api_key": user_api_key,
+                "user_id": user.id,
                 "custom_rules": [],
                 "custom_test_command": None,
             })

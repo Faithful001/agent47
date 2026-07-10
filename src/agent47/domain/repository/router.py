@@ -58,9 +58,17 @@ def track_repo(
 ):
     """Start tracking a repo — register a webhook for CI failure events.
 
-    If the repo is already tracked, updates the webhook URL and returns
-    the existing record instead of failing.
+    If the repo is already tracked, updates the configuration and webhook URL
+    and returns the existing record instead of failing.
     """
+    from agent47.domain.apikey.model import ApiKey
+    active_key = db.query(ApiKey).filter(ApiKey.user_id == user.id, ApiKey.is_active == True).first()
+    if not active_key:
+        raise HTTPException(
+            status_code=400,
+            detail="You must configure and select an active API Key in settings before importing/tracking repositories."
+        )
+
     repo_svc = RepositoryService(db)
     parts = request.repo_full_name.split("/")
     owner, name = parts[0], parts[1]
