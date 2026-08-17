@@ -94,4 +94,4 @@ if __name__ == "__main__":
     logger.info(f"Operative model: {advanced_model_name}")
     
     import uvicorn
-    uvicorn.run("agent47.main:app", host="127.0.0.1", port=9000, reload=True)
+    uvicorn.run("agent47.main:app", host="127.0.0.1", port=8000, reload=True)
