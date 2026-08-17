@@ -2,6 +2,7 @@ import os
 import shutil
 import stat
 
+os.environ.setdefault("GIT_PYTHON_REFRESH", "quiet")
 from git import Repo
 
 from agent47.config.config import WORKSPACE_BASE_DIR
