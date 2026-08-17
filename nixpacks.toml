@@ -1,0 +1,5 @@
+# Nixpacks configuration
+# Ensures system dependencies (like git CLI required by GitPython) are installed in the build container
+
+[phases.setup]
+nixPkgs = ["...", "git"]
