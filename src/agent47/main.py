@@ -18,7 +18,6 @@ from agent47.domain.apikey.router import router as apikey_router
 import logging
 import os
 
-# --- Configure Logging ---
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
