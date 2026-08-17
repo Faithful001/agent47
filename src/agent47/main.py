@@ -29,8 +29,13 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(application: FastAPI):
-    """Create database tables on startup."""
-    create_tables()
+    """Create database tables on startup without blocking server readiness."""
+    try:
+        logger.info("Initializing database tables...")
+        create_tables()
+        logger.info("Database tables initialized successfully.")
+    except Exception as e:
+        logger.warning(f"Database table initialization skipped/failed: {e}")
     yield
 
 
@@ -69,6 +74,7 @@ app.include_router(apikey_router)
 
 
 @app.get("/")
+@app.get("/health")
 def root():
     """Health check / welcome endpoint."""
     return {

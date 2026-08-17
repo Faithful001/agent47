@@ -14,7 +14,11 @@ DATABASE_URL = os.getenv(
     "postgresql://postgres:postgres@127.0.0.1:5432/agent47",
 )
 
-engine = create_engine(DATABASE_URL, echo=False)
+engine = create_engine(
+    DATABASE_URL,
+    echo=False,
+    connect_args={"connect_timeout": 5} if DATABASE_URL.startswith("postgresql") else {}
+)
 
 SessionLocal = sessionmaker(bind=engine, autocommit=False, autoflush=True)
 
