@@ -44,7 +44,8 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-webhook_url = os.getenv("WEBHOOK_CALLBACK_URL").replace("/webhooks/github", "")
+webhook_url_raw = os.getenv("WEBHOOK_CALLBACK_URL", "http://localhost:8000/webhooks/github")
+webhook_url = webhook_url_raw.replace("/webhooks/github", "") if webhook_url_raw else "http://localhost:8000"
 
 app.add_middleware(
     CORSMiddleware,
