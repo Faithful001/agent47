@@ -57,10 +57,10 @@ GITHUB_CLIENT_ID = os.getenv("GITHUB_CLIENT_ID", "")
 GITHUB_CLIENT_SECRET = os.getenv("GITHUB_CLIENT_SECRET", "")
 GITHUB_WEBHOOK_SECRET = os.getenv("GITHUB_WEBHOOK_SECRET", "")
 WEBHOOK_CALLBACK_URL = os.getenv(
-    "WEBHOOK_CALLBACK_URL", "http://localhost:8000/webhooks/github"
+    "WEBHOOK_CALLBACK_URL", "http://localhost:8000/api/v1/webhooks/github"
 )
 GITHUB_REDIRECT_URI = os.getenv(
-    "GITHUB_REDIRECT_URI", "http://localhost:8000/auth/callback"
+    "GITHUB_REDIRECT_URI", "http://localhost:8000/api/v1/auth/callback"
 )
 
 # --- Workspace ---

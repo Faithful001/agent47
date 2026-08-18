@@ -17,6 +17,7 @@ from agent47.domain.websocket.router import router as websocket_router
 from agent47.domain.apikey.router import router as apikey_router
 import logging
 import os
+from agent47.config.config import FRONTEND_URL
 
 logging.basicConfig(
     level=logging.INFO,
@@ -53,11 +54,19 @@ webhook_url = webhook_url_raw.replace("/webhooks/github", "") if webhook_url_raw
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", webhook_url, "http://agent47-client.localhost", "https://useagent47.vercel.app"],
+    allow_origins=[
+        "http://localhost:3000",
+        webhook_url,
+        "http://agent47-client.localhost",
+        "https://useagent47.vercel.app",
+        FRONTEND_URL,
+    ],
+    allow_origin_regex=r"https://.*\.vercel\.app",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 
 # Standardize all JSON responses
 app.add_middleware(ResponseInterceptor)

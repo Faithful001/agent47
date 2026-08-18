@@ -108,9 +108,9 @@ async def oauth_callback(code: str, db: Session = Depends(get_db)):
     response.set_cookie(
         key="session_token",
         value=session_jwt,
-        httponly=True,      # JS cannot read this cookie (XSS protection)
-        secure=False,       # Set to True in production (requires HTTPS)
-        samesite="lax",     # CSRF protection
+        httponly=True,
+        secure=True,
+        samesite="none",
         max_age=7 * 24 * 3600,  # 7 days in seconds
         path="/",
     )
@@ -152,8 +152,15 @@ def logout(
             pass  # Token was already invalid — still clear the cookie
 
     response = RedirectResponse(url=f"{FRONTEND_URL}", status_code=303)
-    response.delete_cookie(key="session_token", path="/")
+    response.delete_cookie(
+        key="session_token",
+        path="/",
+        secure=True,
+        samesite="none",
+        httponly=True,
+    )
     return response
+
 
 
 @router.get("/profile-stats")
