@@ -35,7 +35,14 @@ async def get_current_user(
     request: Request,
     db: Session = Depends(get_db),
 ) -> User:
-    token = request.cookies.get("session_token")
+    token = None
+    auth_header = request.headers.get("Authorization")
+    if auth_header and auth_header.startswith("Bearer "):
+        token = auth_header.split(" ", 1)[1].strip()
+
+    if not token:
+        token = request.cookies.get("session_token")
+
     if not token:
         raise HTTPException(status_code=401, detail="Not authenticated")
 
@@ -103,8 +110,8 @@ async def oauth_callback(code: str, db: Session = Depends(get_db)):
     # Create a server-side session and get a signed JWT
     session_jwt = AuthService.create_session(db, user.id)
 
-    # Redirect to the frontend and set the session cookie
-    response = RedirectResponse(url=f"{FRONTEND_URL}/dashboard")
+    # Redirect to the frontend callback with token in query params, while also setting cookie
+    response = RedirectResponse(url=f"{FRONTEND_URL}/auth/callback?token={session_jwt}")
     response.set_cookie(
         key="session_token",
         value=session_jwt,
@@ -119,11 +126,7 @@ async def oauth_callback(code: str, db: Session = Depends(get_db)):
 
 @router.get("/me", response_model=UserInfoResponse)
 def me(user: User = Depends(get_current_user)):
-    """Return info about the currently authenticated user.
-
-    The browser automatically sends the HttpOnly cookie — no need
-    for the frontend to manually attach any token.
-    """
+    """Return info about the currently authenticated user."""
     return UserInfoResponse(
         user_id=user.id,
         username=user.username,
@@ -138,12 +141,15 @@ def logout(
     request: Request,
     db: Session = Depends(get_db),
 ):
-    """Revoke the current session and clear the cookie.
+    """Revoke the current session and clear the cookie."""
+    token = None
+    auth_header = request.headers.get("Authorization")
+    if auth_header and auth_header.startswith("Bearer "):
+        token = auth_header.split(" ", 1)[1].strip()
 
-    After this, the JWT is useless even if someone captured it,
-    because the session row no longer exists in the database.
-    """
-    token = request.cookies.get("session_token")
+    if not token:
+        token = request.cookies.get("session_token")
+
     if token:
         try:
             payload = AuthService.verify_token(token)
