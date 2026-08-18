@@ -175,6 +175,7 @@ def save_apikeys(
             temperature=request.temperature
         )
         
+        # 4. Fetch final list of keys
         final_keys = db.query(ApiKey).filter(ApiKey.user_id == user.id).all()
         return [map_to_response(k) for k in final_keys]
         

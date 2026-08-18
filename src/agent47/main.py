@@ -53,7 +53,7 @@ webhook_url = webhook_url_raw.replace("/webhooks/github", "") if webhook_url_raw
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", webhook_url, "http://agent47-client.localhost"],
+    allow_origins=["http://localhost:3000", webhook_url, "http://agent47-client.localhost", "https://useagent47.vercel.app"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
