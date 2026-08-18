@@ -62,14 +62,19 @@ app.add_middleware(
 # Standardize all JSON responses
 app.add_middleware(ResponseInterceptor)
 
-# --- Register domain routers ---
-app.include_router(auth_router)
-app.include_router(repo_router)
-app.include_router(webhook_router)
-app.include_router(contract_router)
-app.include_router(build_router)
-app.include_router(websocket_router)
-app.include_router(apikey_router)
+from fastapi.routing import APIRouter
+
+# --- Register domain routers under /api/v1 ---
+api_v1_router = APIRouter(prefix="/api/v1")
+api_v1_router.include_router(auth_router)
+api_v1_router.include_router(repo_router)
+api_v1_router.include_router(webhook_router)
+api_v1_router.include_router(contract_router)
+api_v1_router.include_router(build_router)
+api_v1_router.include_router(websocket_router)
+api_v1_router.include_router(apikey_router)
+
+app.include_router(api_v1_router)
 
 
 @app.get("/")
