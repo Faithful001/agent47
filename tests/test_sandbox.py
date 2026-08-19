@@ -1,6 +1,6 @@
 import pytest
 import docker
-from agent47.sandbox.docker_client import Sandbox
+from agent47.infra.sandbox.docker_client import Sandbox
 import os
 
 @pytest.fixture
